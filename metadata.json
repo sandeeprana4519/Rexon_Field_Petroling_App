@@ -1,0 +1,6 @@
+{
+  "name": "Rexon Field Patrolling App",
+  "description": "Security company owner operations dashboard for Rexon Field Patrolling App, managing sites, field officers, patrols, checklists, and incident response.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
