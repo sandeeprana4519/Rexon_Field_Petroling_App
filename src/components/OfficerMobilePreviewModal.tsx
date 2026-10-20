@@ -102,12 +102,12 @@ export const OfficerMobilePreviewModal: React.FC<OfficerMobilePreviewModalProps>
                 <div className="text-[10px] uppercase font-bold text-[#8B735B]">
                   Active Site Assignment
                 </div>
-                <div className="text-xs font-bold text-[#4B3621] truncate">
+                <div className="text-xs font-bold text-[#4B3621] break-words leading-snug">
                   {site.name}
                 </div>
-                <div className="text-[10px] text-[#8B735B] flex items-center gap-1">
-                  <MapPin className="w-3 h-3 text-[#6F4E37]" />
-                  <span>Geofence Status: Verified within 15m (Demo)</span>
+                <div className="text-[10px] text-[#8B735B] flex items-start gap-1">
+                  <MapPin className="w-3 h-3 text-[#6F4E37] shrink-0 mt-0.5" />
+                  <span className="break-words leading-tight">Geofence Status: Verified within 15m (Demo)</span>
                 </div>
               </div>
             </div>
@@ -115,11 +115,11 @@ export const OfficerMobilePreviewModal: React.FC<OfficerMobilePreviewModalProps>
             {/* Step: Main Patrol Checklist View */}
             {activeStep === 'patrol' && (
               <div className="flex-1 overflow-y-auto space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-1">
                   <span className="text-xs font-semibold text-[#4B3621]">
                     Checkpoint Checklist
                   </span>
-                  <span className="text-[11px] font-mono font-bold text-[#6F4E37]">
+                  <span className="text-[11px] font-mono font-bold text-[#6F4E37] shrink-0">
                     {Object.values(checks).filter(Boolean).length}/{site.checklistTemplates.length} Done
                   </span>
                 </div>

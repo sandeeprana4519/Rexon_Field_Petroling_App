@@ -553,17 +553,17 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
                 <div className="text-[#8B735B]">{inspectingSite.address}</div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
                 <div className="p-2.5 rounded-lg bg-[#FAF7F2] border border-[#E7DED2]">
                   <div className="text-[#8B735B] font-semibold">Contact Person</div>
-                  <div className="font-bold text-[#4B3621] mt-0.5">{inspectingSite.contactPerson}</div>
-                  <div className="text-[#8B735B] mt-0.5">{inspectingSite.contactPhone}</div>
+                  <div className="font-bold text-[#4B3621] mt-0.5 break-words">{inspectingSite.contactPerson}</div>
+                  <div className="text-[#8B735B] mt-0.5 break-words font-mono text-[10px]">{inspectingSite.contactPhone}</div>
                 </div>
 
                 <div className="p-2.5 rounded-lg bg-[#FAF7F2] border border-[#E7DED2]">
                   <div className="text-[#8B735B] font-semibold">Geofence Radius</div>
                   <div className="font-bold text-[#1B5E20] mt-0.5">{inspectingSite.geofenceRadiusMeters} meters</div>
-                  <div className="text-[#8B735B] mt-0.5 font-medium">Frequency: {inspectingSite.patrolFrequency}</div>
+                  <div className="text-[#8B735B] mt-0.5 font-medium break-words">Frequency: {inspectingSite.patrolFrequency}</div>
                 </div>
               </div>
 

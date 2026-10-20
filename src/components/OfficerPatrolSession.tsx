@@ -368,66 +368,73 @@ export const OfficerPatrolSession: React.FC<OfficerPatrolSessionProps> = ({
         )}
 
         {/* 1. Facility & Check-In Overview Card */}
-        <div className="bg-[#FFFFFF] border border-[#E7DED2] rounded-xl p-4 space-y-3 shadow-2xs">
-          <div className="flex items-start justify-between gap-2 border-b border-[#E7DED2] pb-2.5">
-            <div>
-              <span className="text-[10px] font-mono text-[#6F4E37] font-bold uppercase tracking-wider">
+        <div className="bg-[#FFFFFF] border border-[#E7DED2] rounded-xl p-4 sm:p-5 space-y-3.5 shadow-2xs">
+          {/* Site Details Section */}
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 border-b border-[#E7DED2] pb-3">
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] font-mono text-[#6F4E37] font-bold uppercase tracking-wider block">
                 ACTIVE PATROL EXECUTION
               </span>
-              <h3 className="text-base font-bold text-[#4B3621] mt-0.5">
+              <h3 className="text-base sm:text-lg font-bold text-[#4B3621] mt-0.5 break-words leading-snug">
                 {site.name}
               </h3>
-              <p className="text-xs text-[#8B735B] flex items-center gap-1 mt-0.5">
-                <MapPin className="w-3.5 h-3.5 text-[#6F4E37] shrink-0" />
-                <span>{site.address}</span>
+              <p className="text-xs text-[#8B735B] flex items-start gap-1.5 mt-1 break-words leading-relaxed">
+                <MapPin className="w-3.5 h-3.5 text-[#6F4E37] shrink-0 mt-0.5" />
+                <span className="break-words leading-tight">{site.address}</span>
               </p>
             </div>
 
-            <div className="text-right shrink-0">
-              <div className="text-[10px] text-[#8B735B]">Scheduled Time</div>
-              <div className="font-mono text-xs text-[#4B3621] font-bold">{scheduledTime || '08:00 AM'}</div>
+            <div className="text-left sm:text-right shrink-0 pt-1 sm:pt-0">
+              <div className="text-[10px] text-[#8B735B] font-medium">Scheduled Time</div>
+              <div className="font-mono text-xs sm:text-sm text-[#4B3621] font-bold mt-0.5">{scheduledTime || '08:00 AM'}</div>
             </div>
           </div>
 
-          {/* Check-In Timestamp Row */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs bg-[#FAF7F2] p-3 rounded-lg border border-[#E7DED2]">
-            <div className="flex items-center gap-2">
+          {/* Area between Site Details & Checklist: Check-In Timestamp Row */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs bg-[#FAF7F2] p-3 rounded-xl border border-[#E7DED2]">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
               <Clock className="w-4 h-4 text-[#6F4E37] shrink-0" />
-              <div>
+              <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                 <span className="text-[#8B735B]">Officer Check-In Time:</span>
-                <span className="font-mono font-bold text-[#4B3621] ml-1.5">{checkInTime}</span>
+                <span className="font-mono font-bold text-[#4B3621]">{checkInTime}</span>
               </div>
             </div>
 
             <button
               type="button"
               onClick={() => setCheckInTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}
-              className="text-[11px] text-[#6F4E37] hover:text-[#5A3E2B] underline font-bold self-end sm:self-auto cursor-pointer"
+              className="text-[11px] text-[#6F4E37] hover:text-[#5A3E2B] underline font-bold self-start sm:self-auto cursor-pointer shrink-0"
             >
               Re-stamp Check-In Time
             </button>
           </div>
 
-          {/* GPS Check-In Notice (Explicitly stated per prompt requirements) */}
-          <div className="p-3 rounded-lg bg-[#FAF7F2] border border-[#E7DED2] space-y-1.5 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-[#4B3621] flex items-center gap-1.5 text-[11px]">
-                <Compass className="w-3.5 h-3.5 text-[#6F4E37]" />
-                <span>GPS Check-In: Integration Pending (Simulated Demo)</span>
-              </span>
-              <span className="text-[10px] font-mono text-[#8B735B] bg-[#F0E8DD] px-1.5 py-0.5 rounded border border-[#E7DED2] font-semibold">
+          {/* Area between Site Details & Checklist: GPS Check-In Notice Box */}
+          <div className="p-3.5 rounded-xl bg-[#FAF7F2] border border-[#E7DED2] space-y-2 text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-start gap-2 min-w-0 flex-1">
+                <Compass className="w-4 h-4 text-[#6F4E37] shrink-0 mt-0.5" />
+                <span className="font-bold text-[#4B3621] text-xs break-words leading-snug">
+                  GPS Check-In: Integration Pending (Simulated Demo)
+                </span>
+              </div>
+              <span className="text-[10px] font-mono text-[#8B735B] bg-[#F0E8DD] px-2 py-0.5 rounded border border-[#E7DED2] font-semibold shrink-0 self-start sm:self-auto">
                 DEMO ONLY
               </span>
             </div>
-            <p className="text-[11px] text-[#8B735B] leading-snug">
+
+            <p className="text-[11px] text-[#8B735B] leading-relaxed break-words">
               Actual device GPS access is not connected in this demonstration. Check-in status is simulated within the site's {site.geofenceRadiusMeters}m geofence radius.
             </p>
-            <div className="pt-1 flex items-center justify-between text-[11px] text-[#1B5E20] font-mono font-bold">
-              <span>Status: Verified within {simulatedDistance}m of centroid</span>
+
+            <div className="pt-1.5 border-t border-[#E7DED2]/70 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-[11px] text-[#1B5E20] font-mono font-bold">
+              <span className="break-words leading-tight">
+                Status: Verified within {simulatedDistance}m of centroid
+              </span>
               <button
                 type="button"
                 onClick={() => setSimulatedDistance((d) => (d === 12 ? 8 : 12))}
-                className="text-[#8B735B] hover:text-[#4B3621] underline text-[10px] cursor-pointer"
+                className="text-[#8B735B] hover:text-[#4B3621] underline text-[10px] cursor-pointer self-start sm:self-auto shrink-0 font-sans"
               >
                 Toggle Accuracy (Demo)
               </button>
@@ -436,12 +443,12 @@ export const OfficerPatrolSession: React.FC<OfficerPatrolSessionProps> = ({
         </div>
 
         {/* 2. Inspection Checklist Items */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="text-sm font-bold text-[#4B3621]">
+        <div className="space-y-3 pt-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-bold text-[#4B3621] leading-snug break-words">
               Inspection Checkpoints ({checklistTemplates.length})
             </h4>
-            <span className="text-[11px] text-[#8B735B]">
+            <span className="text-[11px] text-[#8B735B] leading-tight">
               Select status for each item
             </span>
           </div>

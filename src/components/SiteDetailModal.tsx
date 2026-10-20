@@ -53,12 +53,12 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
               </span>
             </div>
 
-            <h3 className="text-lg sm:text-xl font-bold text-[#4B3621] tracking-tight flex items-center gap-2 truncate">
+            <h3 className="text-lg sm:text-xl font-bold text-[#4B3621] tracking-tight flex items-center gap-2 break-words">
               <Building2 className="w-5 h-5 text-[#6F4E37] shrink-0" />
-              <span>{report.siteName}</span>
+              <span className="break-words">{report.siteName}</span>
             </h3>
 
-            <div className="flex flex-wrap items-center gap-3 text-xs text-[#8B735B] mt-1">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-[#8B735B] mt-1.5 leading-relaxed">
               <span>Client: <strong className="text-[#4B3621] font-semibold">{site?.clientName || 'Contract Client'}</strong></span>
               <span>·</span>
               <span>Officer: <strong className="text-[#4B3621] font-semibold">{report.officerName} ({report.officerBadge})</strong></span>
@@ -86,15 +86,17 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
           </div>
         </div>
 
-        {/* Demo Environment Notice */}
-        <div className="bg-[#FAF7F2] px-4 py-2 border-b border-[#E7DED2] flex items-center justify-between text-[11px] text-[#8B735B]">
-          <div className="flex items-center gap-2">
-            <span className="px-1.5 py-0.2 rounded bg-[#E8D8C5] text-[#4B3621] font-mono text-[9px] font-bold border border-[#E7DED2]">
+        {/* Demo Environment Notice (Responsive & Wrapping) */}
+        <div className="bg-[#FAF7F2] px-4 py-2.5 border-b border-[#E7DED2] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-[#8B735B]">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <span className="px-1.5 py-0.5 rounded bg-[#E8D8C5] text-[#4B3621] font-mono text-[9px] font-bold border border-[#E7DED2] shrink-0">
               DEMO AUDIT RECORD
             </span>
-            <span>Site Geofence Radius: <strong className="text-[#4B3621]">{site?.geofenceRadiusMeters || 50}m</strong></span>
+            <span className="break-words leading-tight">
+              Site Geofence Radius: <strong className="text-[#4B3621]">{site?.geofenceRadiusMeters || 50}m</strong>
+            </span>
           </div>
-          <div className="text-[#8B735B]">
+          <div className="text-[#8B735B] shrink-0 font-medium">
             Check-in GPS: <strong className="font-mono text-[#1B5E20] font-bold">{report.gpsStatus.distanceDeviationMeters}m deviation</strong>
           </div>
         </div>
@@ -155,16 +157,16 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
           {/* TAB 1: CHECKLIST */}
           {activeTab === 'checklist' && (
             <div className="space-y-4">
-              <div className="p-3.5 rounded-xl bg-[#FAF7F2] border border-[#E7DED2] flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-bold text-[#4B3621]">
+              <div className="p-3.5 rounded-xl bg-[#FAF7F2] border border-[#E7DED2] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-[#4B3621] break-words">
                     Checklist Execution Progress
                   </div>
-                  <div className="text-[11px] text-[#8B735B]">
+                  <div className="text-[11px] text-[#8B735B] break-words mt-0.5 leading-snug">
                     {completedChecklistCount} of {totalChecklistCount} checkpoints inspected and verified
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 self-start sm:self-auto shrink-0 pt-1 sm:pt-0">
                   <div className="text-sm font-bold font-mono text-[#6F4E37]">
                     {checklistCompletionPct}%
                   </div>
