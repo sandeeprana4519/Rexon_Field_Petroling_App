@@ -14,11 +14,12 @@ interface HeaderProps {
 const TAB_TITLES: Record<NavigationTab, { title: string; subtitle: string }> = {
   dashboard: { title: 'Security Operations Dashboard', subtitle: 'Live overview of field patrols, site security & incidents' },
   sites: { title: 'Monitored Client Sites', subtitle: 'Manage properties, patrol checklists and geofence perimeters' },
+  zones: { title: 'Patrol Zones Console · पेट्रोलिंग ज़ोन', subtitle: 'Create, edit, remove, and manage security patrolling zones' },
   officers: { title: 'Field Officers Roster', subtitle: 'Officer status, active shift assignments and contact details' },
-  reports: { title: 'Patrol Reports Archive', subtitle: 'Audit verified check-in logs, checkpoint times & proof photos' },
+  reports: { title: 'Patrol Reports & Area Audits', subtitle: 'Audit verified check-in logs, checkpoint times & proof photos' },
   incidents: { title: 'Incident Response Desk', subtitle: 'Triage reported security events, priority alerts & logs' },
   assignments: { title: 'Officer Shift Assignments', subtitle: 'Daily patrol quotas, zone dispatching and schedule rosters' },
-  settings: { title: 'Company & Patrol Settings', subtitle: 'Configure geofence tolerance, grace windows and company profile' }
+  settings: { title: 'Security & Company Settings · सिक्योरिटी व सेटिंग्स', subtitle: 'Configure geofence tolerance, grace windows and company profile' }
 };
 
 export const Header: React.FC<HeaderProps> = ({

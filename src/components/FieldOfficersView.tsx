@@ -18,7 +18,9 @@ import {
   X,
   Building2,
   Calendar,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Mail,
+  KeyRound
 } from 'lucide-react';
 import { FieldOfficer, Site, OfficerShift, OfficerEmploymentStatus, PatrolReport, Assignment } from '../types';
 import { DEMO_AREAS } from '../data/demoData';
@@ -27,6 +29,7 @@ import { OfficerDailyReportModal } from './OfficerDailyReportModal';
 interface FieldOfficersViewProps {
   officers: FieldOfficer[];
   sites: Site[];
+  areas?: string[];
   reports?: PatrolReport[];
   assignments?: Assignment[];
   onSaveOfficer: (officer: FieldOfficer) => void;
@@ -38,6 +41,7 @@ interface FieldOfficersViewProps {
 export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
   officers,
   sites,
+  areas = [...DEMO_AREAS],
   reports = [],
   assignments = [],
   onSaveOfficer,
@@ -63,6 +67,8 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
   const [formData, setFormData] = useState({
     name: '',
     employeeId: '',
+    email: '',
+    password: 'rexon123',
     phone: '',
     area: DEMO_AREAS[0] as string,
     shift: 'Day' as OfficerShift,
@@ -78,7 +84,8 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
         const matchesEmpId = off.employeeId.toLowerCase().includes(q);
         const matchesBadge = off.badgeNumber.toLowerCase().includes(q);
         const matchesPhone = off.phone.toLowerCase().includes(q);
-        if (!matchesName && !matchesEmpId && !matchesBadge && !matchesPhone) return false;
+        const matchesEmail = off.email ? off.email.toLowerCase().includes(q) : false;
+        if (!matchesName && !matchesEmpId && !matchesBadge && !matchesPhone && !matchesEmail) return false;
       }
 
       // 2. Area
@@ -100,6 +107,8 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
     setFormData({
       name: '',
       employeeId: `REX-EMP-${nextEmpNum}`,
+      email: '',
+      password: 'rexon123',
       phone: '+1 (555) 301-4400',
       area: DEMO_AREAS[0],
       shift: 'Day',
@@ -113,6 +122,8 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
     setFormData({
       name: officer.name,
       employeeId: officer.employeeId,
+      email: officer.email || '',
+      password: officer.password || 'rexon123',
       phone: officer.phone,
       area: officer.area,
       shift: officer.shift,
@@ -134,6 +145,8 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
       employeeId: formData.employeeId.trim(),
       badgeNumber: editingOfficer ? editingOfficer.badgeNumber : `RF-${Math.floor(100 + Math.random() * 900)}`,
       name: formData.name.trim(),
+      email: formData.email.trim() || `${formData.name.toLowerCase().replace(/\s+/g, '')}@rexon.com`,
+      password: formData.password.trim() || 'rexon123',
       phone: formData.phone.trim(),
       area: formData.area,
       shift: formData.shift,
@@ -288,8 +301,8 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
               onChange={(e) => setSelectedArea(e.target.value)}
               className="w-full px-2.5 py-1.5 bg-[#FFFFFF] border border-[#E7DED2] rounded-lg text-[#4B3621] focus:outline-none focus:border-[#6F4E37] cursor-pointer"
             >
-              <option value="all">All Areas ({DEMO_AREAS.length})</option>
-              {DEMO_AREAS.map((a) => (
+              <option value="all">All Areas ({areas.length})</option>
+              {areas.map((a) => (
                 <option key={a} value={a}>
                   {a}
                 </option>
@@ -387,7 +400,7 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Phone & Area Info */}
+                  {/* Phone, Email & Area Info */}
                   <div className="space-y-1 text-xs text-[#8B735B] mb-2.5">
                     <div className="flex items-center justify-between">
                       <span className="flex items-center gap-1 text-[11px] text-[#4B3621] font-medium">
@@ -395,6 +408,10 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
                         <span>{officer.phone}</span>
                       </span>
                       <span className="font-mono text-[11px] text-[#8B735B] font-semibold">{officer.shift} Shift</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[11px] text-[#4B3621] font-mono">
+                      <Mail className="w-3 h-3 text-[#6F4E37] shrink-0" />
+                      <span className="truncate">{officer.email || `${officer.name.toLowerCase().replace(/\s+/g, '')}@rexon.com`}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-[11px] text-[#8B735B]">
                       <MapPin className="w-3.5 h-3.5 text-[#6F4E37] shrink-0" />
@@ -448,9 +465,10 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
                     type="button"
                     onClick={() => setSelectedOfficerForReport(officer)}
                     className="w-full py-2 px-3 text-xs font-bold rounded-xl bg-[#6F4E37] hover:bg-[#5A3E2B] text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+                    title="Audit Reports & Data Download (Daily / Weekly / Monthly)"
                   >
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span>Daily Reports & Downloads (दैनिक रिपोर्ट)</span>
+                    <Calendar className="w-3.5 h-3.5 shrink-0" />
+                    <span>Download Reports (रिपोर्ट डाउनलोड)</span>
                   </button>
 
                   <div className="flex items-center justify-between gap-2">
@@ -544,6 +562,30 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     placeholder="e.g. +1 (555) 301-4401"
                     className="w-full px-3 py-1.5 bg-[#FFFFFF] border border-[#E7DED2] rounded-lg text-[#4B3621] focus:outline-none focus:border-[#6F4E37]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[#4B3621] mb-1 font-semibold">Login Email ID</label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="e.g. officer@rexon.com"
+                    className="w-full px-3 py-1.5 bg-[#FFFFFF] border border-[#E7DED2] rounded-lg text-[#4B3621] focus:outline-none focus:border-[#6F4E37]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[#4B3621] mb-1 font-semibold">Portal Password</label>
+                  <input
+                    type="text"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="Default: rexon123"
+                    className="w-full px-3 py-1.5 bg-[#FFFFFF] border border-[#E7DED2] rounded-lg text-[#4B3621] font-mono focus:outline-none focus:border-[#6F4E37]"
                   />
                 </div>
               </div>

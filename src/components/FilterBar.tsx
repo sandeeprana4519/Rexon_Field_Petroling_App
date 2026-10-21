@@ -9,6 +9,7 @@ interface FilterBarProps {
   onResetFilters: () => void;
   sites: Site[];
   officers: FieldOfficer[];
+  areas?: string[];
   totalResultsCount: number;
   totalPatrolsCount: number;
 }
@@ -19,6 +20,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   onResetFilters,
   sites,
   officers,
+  areas = [...DEMO_AREAS],
   totalResultsCount,
   totalPatrolsCount
 }) => {
@@ -86,8 +88,8 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             onChange={(e) => onFilterChange('area', e.target.value)}
             className="w-full bg-[#FFFFFF] border border-[#E7DED2] rounded-lg px-2.5 py-1.5 text-xs text-[#4B3621] focus:outline-none focus:border-[#6F4E37] focus:ring-1 focus:ring-[#6F4E37]/30 cursor-pointer"
           >
-            <option value="all">All Areas ({DEMO_AREAS.length})</option>
-            {DEMO_AREAS.map((area) => (
+            <option value="all">All Areas ({areas.length})</option>
+            {areas.map((area) => (
               <option key={area} value={area}>
                 {area}
               </option>

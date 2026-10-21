@@ -9,7 +9,8 @@ import {
   Assignment,
   IncidentStatus,
   ChecklistItem,
-  AppMode
+  AppMode,
+  PatrolZone
 } from './types';
 import {
   DEMO_SITES,
@@ -17,7 +18,8 @@ import {
   DEMO_PATROL_REPORTS,
   DEMO_INCIDENTS,
   DEMO_ASSIGNMENTS,
-  MASTER_CHECKLIST_LIBRARY
+  MASTER_CHECKLIST_LIBRARY,
+  INITIAL_PATROL_ZONES
 } from './data/demoData';
 import { loadFromStorage, saveToStorage, clearDemoStorage, STORAGE_KEYS } from './utils/storage';
 import { DemoDataBanner } from './components/DemoDataBanner';
@@ -28,13 +30,14 @@ import { FilterBar } from './components/FilterBar';
 import { PatrolReportsTable } from './components/PatrolReportsTable';
 import { SiteDetailModal } from './components/SiteDetailModal';
 import { SitesView } from './components/SitesView';
+import { PatrolZonesView } from './components/PatrolZonesView';
 import { FieldOfficersView } from './components/FieldOfficersView';
 import { IncidentsView } from './components/IncidentsView';
 import { AssignmentsView } from './components/AssignmentsView';
 import { SettingsView } from './components/SettingsView';
 import { ChecklistManagerModal } from './components/ChecklistManagerModal';
 import { FieldOfficerMode } from './components/FieldOfficerMode';
-import { ShieldCheck, FileSpreadsheet, AlertTriangle, ArrowUpRight, Smartphone, LogOut } from 'lucide-react';
+import { ShieldCheck, FileSpreadsheet, AlertTriangle, ArrowUpRight, Smartphone, LogOut, Compass } from 'lucide-react';
 
 export default function App() {
   // App Mode (Owner Dashboard vs Field Officer Mode)
@@ -85,6 +88,21 @@ export default function App() {
   const [incidents, setIncidents] = useState<IncidentRecord[]>(() =>
     loadFromStorage(STORAGE_KEYS.INCIDENTS, DEMO_INCIDENTS)
   );
+  const [zones, setZones] = useState<PatrolZone[]>(() => {
+    const stored = loadFromStorage<any>(STORAGE_KEYS.AREAS, INITIAL_PATROL_ZONES);
+    if (Array.isArray(stored) && stored.length > 0) {
+      if (typeof stored[0] === 'string') {
+        return (stored as string[]).map((name, idx) => ({
+          id: `zone-${idx + 1}`,
+          name,
+          code: `ZONE-${String.fromCharCode(65 + (idx % 26))}`,
+          description: `Patrol zone for ${name}`
+        }));
+      }
+      return stored as PatrolZone[];
+    }
+    return INITIAL_PATROL_ZONES;
+  });
 
   // Auto-sync state to localStorage whenever it changes
   useEffect(() => {
@@ -110,6 +128,10 @@ export default function App() {
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.INCIDENTS, incidents);
   }, [incidents]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.AREAS, zones);
+  }, [zones]);
 
   // Dashboard Filters State
   const [filters, setFilters] = useState<FilterState>({
@@ -198,6 +220,50 @@ export default function App() {
         return s;
       })
     );
+  };
+
+  // ZONE MANAGEMENT HANDLERS (REQUESTED BY USER)
+  const handleCreateZone = (newZone: PatrolZone) => {
+    setZones((prev) => {
+      const exists = prev.some((z) => z.id === newZone.id || z.name.toLowerCase() === newZone.name.toLowerCase());
+      if (exists) return prev;
+      return [...prev, newZone];
+    });
+    setGlobalFeedback(`Patrol zone "${newZone.name}" created and added to site selection list.`);
+    setTimeout(() => setGlobalFeedback(null), 3000);
+  };
+
+  const handleUpdateZone = (updatedZone: PatrolZone, oldName: string) => {
+    setZones((prev) => prev.map((z) => (z.id === updatedZone.id ? updatedZone : z)));
+    if (oldName && oldName !== updatedZone.name) {
+      setSites((prev) =>
+        prev.map((s) => (s.area.toLowerCase() === oldName.toLowerCase() ? { ...s, area: updatedZone.name } : s))
+      );
+      setAssignments((prev) =>
+        prev.map((a) => (a.area.toLowerCase() === oldName.toLowerCase() ? { ...a, area: updatedZone.name } : a))
+      );
+      setOfficers((prev) =>
+        prev.map((o) => (o.area.toLowerCase() === oldName.toLowerCase() ? { ...o, area: updatedZone.name } : o))
+      );
+    }
+    setGlobalFeedback(`Zone "${updatedZone.name}" updated successfully.`);
+    setTimeout(() => setGlobalFeedback(null), 3000);
+  };
+
+  const handleDeleteZone = (zoneId: string, reassignToZoneName?: string) => {
+    const target = zones.find((z) => z.id === zoneId);
+    if (!target) return;
+    setZones((prev) => prev.filter((z) => z.id !== zoneId));
+    if (reassignToZoneName) {
+      setSites((prev) =>
+        prev.map((s) => (s.area.toLowerCase() === target.name.toLowerCase() ? { ...s, area: reassignToZoneName } : s))
+      );
+      setAssignments((prev) =>
+        prev.map((a) => (a.area.toLowerCase() === target.name.toLowerCase() ? { ...a, area: reassignToZoneName } : a))
+      );
+    }
+    setGlobalFeedback(`Zone "${target.name}" removed.`);
+    setTimeout(() => setGlobalFeedback(null), 3000);
   };
 
   // 2. FIELD OFFICER MANAGEMENT HANDLERS
@@ -353,6 +419,7 @@ export default function App() {
     setOfficers(DEMO_OFFICERS);
     setAssignments(DEMO_ASSIGNMENTS);
     setMasterChecklists(MASTER_CHECKLIST_LIBRARY);
+    setZones(INITIAL_PATROL_ZONES);
     setReports(DEMO_PATROL_REPORTS);
     setIncidents(DEMO_INCIDENTS);
     setGlobalFeedback('All demo records reset to initial factory demo state.');
@@ -385,6 +452,7 @@ export default function App() {
         reports={reports}
         selectedOfficerId={selectedOfficerPersonaId}
         onSelectOfficer={setSelectedOfficerPersonaId}
+        onUpdateOfficer={handleSaveOfficer}
         onSwitchToOwnerMode={() => setAppMode('owner_dashboard')}
         onSubmitPatrolReport={handleSubmitPatrolReport}
         onViewReportInOwner={handleViewReportInOwner}
@@ -479,6 +547,7 @@ export default function App() {
                 onResetFilters={handleResetFilters}
                 sites={sites}
                 officers={officers}
+                areas={zones.map((z) => z.name)}
                 totalResultsCount={filteredReports.length}
                 totalPatrolsCount={reports.length}
               />
@@ -516,7 +585,7 @@ export default function App() {
               </div>
 
               {/* Quick Jump Callout Strip */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
                 <div
                   onClick={() => setCurrentTab('sites')}
                   className="p-3.5 rounded-xl bg-[#FFFFFF] border border-[#E7DED2] hover:border-[#8B735B] hover:bg-[#FAF7F2] transition-colors cursor-pointer group flex items-center justify-between shadow-2xs"
@@ -526,7 +595,22 @@ export default function App() {
                       Sites Management
                     </div>
                     <div className="text-[11px] text-[#8B735B]">
-                      Create sites, edit client parameters & manage assigned checklists
+                      Create sites, site-specific checklists & GPS
+                    </div>
+                  </div>
+                  <ArrowUpRight className="w-4 h-4 text-[#8B735B] group-hover:text-[#4B3621]" />
+                </div>
+
+                <div
+                  onClick={() => setCurrentTab('zones')}
+                  className="p-3.5 rounded-xl bg-[#FFFFFF] border border-[#E7DED2] hover:border-[#8B735B] hover:bg-[#FAF7F2] transition-colors cursor-pointer group flex items-center justify-between shadow-2xs"
+                >
+                  <div>
+                    <div className="text-xs font-bold text-[#4B3621] group-hover:text-[#6F4E37] transition-colors">
+                      Patrol Areas & Zones
+                    </div>
+                    <div className="text-[11px] text-[#8B735B]">
+                      Manage patrol sectors ({zones.length} active zones)
                     </div>
                   </div>
                   <ArrowUpRight className="w-4 h-4 text-[#8B735B] group-hover:text-[#4B3621]" />
@@ -541,7 +625,7 @@ export default function App() {
                       Site & Company Allocations
                     </div>
                     <div className="text-[11px] text-[#8B735B]">
-                      Date-wise allocations (1d, 5d, 7d, 15d, 1mo, custom) with conflict prevention
+                      Date-wise allocations with conflict check
                     </div>
                   </div>
                   <ArrowUpRight className="w-4 h-4 text-[#8B735B] group-hover:text-[#4B3621]" />
@@ -556,7 +640,7 @@ export default function App() {
                       Launch Field Officer Mode
                     </div>
                     <div className="text-[11px] text-[#8B735B]">
-                      Simulate mobile patrol execution, checkpoint verification & issues
+                      Simulate mobile patrol & inspections
                     </div>
                   </div>
                   <ArrowUpRight className="w-4 h-4 text-[#6F4E37]" />
@@ -570,11 +654,32 @@ export default function App() {
             <SitesView
               sites={sites}
               reports={reports}
+              assignments={assignments}
+              officers={officers}
               masterChecklists={masterChecklists}
+              zones={zones}
+              onCreateZone={handleCreateZone}
               onSaveSite={handleSaveSite}
               onToggleSiteStatus={handleToggleSiteStatus}
               onSelectSiteReport={(rep) => setSelectedReport(rep)}
               onOpenChecklistManager={() => setIsChecklistManagerOpen(true)}
+              onOpenZonesManager={() => setCurrentTab('zones')}
+            />
+          )}
+
+          {/* TAB: PATROL AREAS & ZONES (REQUESTED BY USER) */}
+          {currentTab === 'zones' && (
+            <PatrolZonesView
+              zones={zones}
+              sites={sites}
+              officers={officers}
+              onCreateZone={handleCreateZone}
+              onUpdateZone={handleUpdateZone}
+              onDeleteZone={handleDeleteZone}
+              onNavigateToSitesWithZone={(zoneName) => {
+                handleFilterChange('area', zoneName);
+                setCurrentTab('sites');
+              }}
             />
           )}
 
@@ -585,6 +690,7 @@ export default function App() {
               sites={sites}
               reports={reports}
               assignments={assignments}
+              areas={zones.map((z) => z.name)}
               onSaveOfficer={handleSaveOfficer}
               onToggleOfficerStatus={handleToggleOfficerStatus}
               onFilterByOfficer={(offId) => {
@@ -620,6 +726,7 @@ export default function App() {
                 onResetFilters={handleResetFilters}
                 sites={sites}
                 officers={officers}
+                areas={zones.map((z) => z.name)}
                 totalResultsCount={filteredReports.length}
                 totalPatrolsCount={reports.length}
               />
@@ -647,6 +754,7 @@ export default function App() {
               assignments={assignments}
               sites={sites}
               officers={officers}
+              areas={zones.map((z) => z.name)}
               onAddAssignments={handleAddAssignments}
               onUpdateAssignment={handleUpdateAssignment}
               onCancelAssignment={handleCancelAssignment}

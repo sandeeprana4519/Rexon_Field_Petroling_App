@@ -11,14 +11,17 @@ import {
   FileCheck,
   Compass,
   Phone,
-  Printer
+  Printer,
+  Calendar
 } from 'lucide-react';
 import { PatrolReport, Site, IncidentRecord } from '../types';
+import { SiteReportsDownloadModal } from './SiteReportsDownloadModal';
 
 interface SiteDetailModalProps {
   report: PatrolReport;
   site?: Site;
   allSiteIncidents: IncidentRecord[];
+  isOfficerMode?: boolean;
   onClose: () => void;
 }
 
@@ -26,22 +29,25 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
   report,
   site,
   allSiteIncidents,
+  isOfficerMode = false,
   onClose
 }) => {
   const [activeTab, setActiveTab] = useState<'checklist' | 'gps_photos' | 'remarks' | 'incidents'>('checklist');
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [isSiteDownloadModalOpen, setIsSiteDownloadModalOpen] = useState(false);
 
   const completedChecklistCount = report.checklist.filter((i) => i.checked).length;
   const totalChecklistCount = report.checklist.length;
   const checklistCompletionPct = totalChecklistCount > 0 ? Math.round((completedChecklistCount / totalChecklistCount) * 100) : 0;
+  const displayIncidents = (report.incidents && report.incidents.length > 0) ? report.incidents : allSiteIncidents;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
       <div className="bg-[#FFFFFF] border border-[#E7DED2] rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-[#4B3621]">
         {/* Modal Header */}
-        <div className="p-4 sm:p-5 border-b border-[#E7DED2] bg-[#FAF7F2] flex items-start justify-between gap-4">
+        <div className="p-4 sm:p-5 border-b border-[#E7DED2] bg-[#FAF7F2] flex items-start justify-between gap-4 shrink-0">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 mb-1">
+            <div className="flex flex-wrap items-center gap-2 mb-1.5">
               <span className="px-2 py-0.5 rounded font-mono text-[10px] uppercase font-bold tracking-wider bg-[#F0E8DD] text-[#4B3621] border border-[#E7DED2]">
                 {report.reportCode}
               </span>
@@ -51,23 +57,60 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
               <span className="text-xs font-mono text-[#1B5E20] bg-[#E8F5E9] px-2 py-0.5 rounded border border-[#C8E6C9] font-bold uppercase">
                 {report.status}
               </span>
+              {report.finalVerdict && (
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase border ${
+                  report.finalVerdict === 'issue_found'
+                    ? 'bg-[#FFEBEE] text-[#C62828] border-[#FFCDD2]'
+                    : 'bg-[#E8F5E9] text-[#1B5E20] border-[#C8E6C9]'
+                }`}>
+                  {report.finalVerdict === 'issue_found' ? 'Issues Logged' : 'All Clear'}
+                </span>
+              )}
             </div>
 
-            <h3 className="text-lg sm:text-xl font-bold text-[#4B3621] tracking-tight flex items-center gap-2 break-words">
-              <Building2 className="w-5 h-5 text-[#6F4E37] shrink-0" />
-              <span className="break-words">{report.siteName}</span>
+            <h3 className="text-base sm:text-xl font-bold text-[#4B3621] tracking-tight flex items-center gap-2 break-words">
+              {isOfficerMode ? (
+                <FileCheck className="w-5 h-5 text-[#6F4E37] shrink-0" />
+              ) : (
+                <Building2 className="w-5 h-5 text-[#6F4E37] shrink-0" />
+              )}
+              <span className="break-words">
+                {isOfficerMode ? `Submitted Patrol Report: ${report.siteName}` : report.siteName}
+              </span>
             </h3>
 
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-[#8B735B] mt-1.5 leading-relaxed">
-              <span>Client: <strong className="text-[#4B3621] font-semibold">{site?.clientName || 'Contract Client'}</strong></span>
-              <span>·</span>
-              <span>Officer: <strong className="text-[#4B3621] font-semibold">{report.officerName} ({report.officerBadge})</strong></span>
-              <span>·</span>
-              <span className="font-mono">Scheduled: {report.scheduledTime}</span>
-            </div>
+            {isOfficerMode ? (
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-[#8B735B] mt-1.5 leading-relaxed">
+                <span>Officer: <strong className="text-[#4B3621] font-semibold">{report.officerName} ({report.officerBadge})</strong></span>
+                <span>·</span>
+                <span className="font-mono">Completed: <strong className="text-[#4B3621]">{report.completedAt || report.actualCheckInTime || report.scheduledTime}</strong></span>
+                <span>·</span>
+                <span className="text-[#1B5E20] font-semibold font-mono">GPS: {report.gpsStatus.distanceDeviationMeters}m deviation</span>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-[#8B735B] mt-1.5 leading-relaxed">
+                <span>Client: <strong className="text-[#4B3621] font-semibold">{site?.clientName || 'Contract Client'}</strong></span>
+                <span>·</span>
+                <span>Officer: <strong className="text-[#4B3621] font-semibold">{report.officerName} ({report.officerBadge})</strong></span>
+                <span>·</span>
+                <span className="font-mono">Scheduled: {report.scheduledTime}</span>
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            {site && (
+              <button
+                type="button"
+                onClick={() => setIsSiteDownloadModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#6F4E37] hover:bg-[#5A3E2B] text-white text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                title="Download Site Patrol Reports (दिन, हफ्ता, महीना)"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Download Report (दिन / हफ्ता / महीना)</span>
+              </button>
+            )}
+
             <button
               onClick={() => window.print()}
               className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FFFFFF] hover:bg-[#F0E8DD] text-[#4B3621] text-xs font-semibold border border-[#E7DED2] transition-colors cursor-pointer shadow-2xs"
@@ -86,77 +129,113 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
           </div>
         </div>
 
-        {/* Demo Environment Notice (Responsive & Wrapping) */}
-        <div className="bg-[#FAF7F2] px-4 py-2.5 border-b border-[#E7DED2] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-[#8B735B]">
-          <div className="flex flex-wrap items-center gap-2 min-w-0">
-            <span className="px-1.5 py-0.5 rounded bg-[#E8D8C5] text-[#4B3621] font-mono text-[9px] font-bold border border-[#E7DED2] shrink-0">
-              DEMO AUDIT RECORD
-            </span>
-            <span className="break-words leading-tight">
-              Site Geofence Radius: <strong className="text-[#4B3621]">{site?.geofenceRadiusMeters || 50}m</strong>
-            </span>
+        {/* Audit Notice: Only shown in Owner Mode. In Officer Mode, redundant site details are removed */}
+        {!isOfficerMode && (
+          <div className="bg-[#FAF7F2] px-4 py-2.5 border-b border-[#E7DED2] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-[#8B735B] shrink-0">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
+              <span className="px-1.5 py-0.5 rounded bg-[#E8D8C5] text-[#4B3621] font-mono text-[9px] font-bold border border-[#E7DED2] shrink-0">
+                AUDIT RECORD
+              </span>
+              <span className="break-words leading-tight">
+                Site Geofence Radius: <strong className="text-[#4B3621]">{site?.geofenceRadiusMeters || 50}m</strong>
+              </span>
+            </div>
+            <div className="text-[#8B735B] shrink-0 font-medium">
+              Check-in GPS: <strong className="font-mono text-[#1B5E20] font-bold">{report.gpsStatus.distanceDeviationMeters}m deviation</strong>
+            </div>
           </div>
-          <div className="text-[#8B735B] shrink-0 font-medium">
-            Check-in GPS: <strong className="font-mono text-[#1B5E20] font-bold">{report.gpsStatus.distanceDeviationMeters}m deviation</strong>
-          </div>
-        </div>
+        )}
 
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-[#E7DED2] bg-[#FAF7F2] px-3 sm:px-4 gap-1 overflow-x-auto no-scrollbar scrollbar-none">
+        {/* Navigation Tabs (2 columns on mobile so remaining options shift underneath, 4 columns on desktop) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2.5 sm:px-4 bg-[#FAF7F2] border-b border-[#E7DED2] shrink-0">
           <button
+            type="button"
             onClick={() => setActiveTab('checklist')}
-            className={`py-2.5 px-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer shrink-0 ${
+            className={`min-h-[40px] px-2.5 py-2 text-[11px] sm:text-xs rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer text-center ${
               activeTab === 'checklist'
-                ? 'border-[#6F4E37] text-[#6F4E37] bg-white rounded-t-lg shadow-2xs'
-                : 'border-transparent text-[#8B735B] hover:text-[#4B3621]'
+                ? 'bg-[#6F4E37] text-white border-[#6F4E37] font-bold shadow-xs'
+                : 'bg-white text-[#4B3621] border-[#E7DED2] hover:bg-[#F0E8DD] font-semibold shadow-2xs'
             }`}
           >
-            <FileCheck className="w-3.5 h-3.5 shrink-0" />
-            <span>Patrol Checklist ({completedChecklistCount}/{totalChecklistCount})</span>
+            <FileCheck className={`w-3.5 h-3.5 shrink-0 ${activeTab === 'checklist' ? 'text-white' : 'text-[#6F4E37]'}`} />
+            <span className="truncate">Patrol Checklist ({completedChecklistCount}/{totalChecklistCount})</span>
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('gps_photos')}
-            className={`py-2.5 px-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer shrink-0 ${
+            className={`min-h-[40px] px-2.5 py-2 text-[11px] sm:text-xs rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer text-center ${
               activeTab === 'gps_photos'
-                ? 'border-[#6F4E37] text-[#6F4E37] bg-white rounded-t-lg shadow-2xs'
-                : 'border-transparent text-[#8B735B] hover:text-[#4B3621]'
+                ? 'bg-[#6F4E37] text-white border-[#6F4E37] font-bold shadow-xs'
+                : 'bg-white text-[#4B3621] border-[#E7DED2] hover:bg-[#F0E8DD] font-semibold shadow-2xs'
             }`}
           >
-            <Camera className="w-3.5 h-3.5 shrink-0" />
-            <span>GPS & Photos ({report.photos.length})</span>
+            <Camera className={`w-3.5 h-3.5 shrink-0 ${activeTab === 'gps_photos' ? 'text-white' : 'text-[#6F4E37]'}`} />
+            <span className="truncate">GPS & Photos ({report.photos.length})</span>
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('remarks')}
-            className={`py-2.5 px-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer shrink-0 ${
+            className={`min-h-[40px] px-2.5 py-2 text-[11px] sm:text-xs rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer text-center ${
               activeTab === 'remarks'
-                ? 'border-[#6F4E37] text-[#6F4E37] bg-white rounded-t-lg shadow-2xs'
-                : 'border-transparent text-[#8B735B] hover:text-[#4B3621]'
+                ? 'bg-[#6F4E37] text-white border-[#6F4E37] font-bold shadow-xs'
+                : 'bg-white text-[#4B3621] border-[#E7DED2] hover:bg-[#F0E8DD] font-semibold shadow-2xs'
             }`}
           >
-            <MessageSquare className="w-3.5 h-3.5 shrink-0" />
-            <span>Officer Remarks</span>
+            <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${activeTab === 'remarks' ? 'text-white' : 'text-[#6F4E37]'}`} />
+            <span className="truncate">Officer Remarks</span>
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('incidents')}
-            className={`py-2.5 px-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer shrink-0 ${
+            className={`min-h-[40px] px-2.5 py-2 text-[11px] sm:text-xs rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer text-center ${
               activeTab === 'incidents'
-                ? 'border-[#6F4E37] text-[#6F4E37] bg-white rounded-t-lg shadow-2xs'
-                : 'border-transparent text-[#8B735B] hover:text-[#4B3621]'
+                ? 'bg-[#6F4E37] text-white border-[#6F4E37] font-bold shadow-xs'
+                : 'bg-white text-[#4B3621] border-[#E7DED2] hover:bg-[#F0E8DD] font-semibold shadow-2xs'
             }`}
           >
-            <History className="w-3.5 h-3.5 shrink-0" />
-            <span>Incident History ({allSiteIncidents.length})</span>
+            <History className={`w-3.5 h-3.5 shrink-0 ${activeTab === 'incidents' ? 'text-white' : 'text-[#6F4E37]'}`} />
+            <span className="truncate">Incident History ({displayIncidents.length})</span>
           </button>
         </div>
 
-        {/* Tab Content Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-[#FFFFFF]">
+        {/* Tab Content Body (flex-1 min-h-0 ensures container scrolls properly and doesn't squish tabs) */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5 bg-[#FFFFFF]">
           {/* TAB 1: CHECKLIST */}
           {activeTab === 'checklist' && (
             <div className="space-y-4">
+              {/* Officer Mode Quick Report Summary */}
+              {isOfficerMode && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="p-3 rounded-xl bg-[#FAF7F2] border border-[#E7DED2]">
+                    <div className="text-[10px] font-mono text-[#8B735B] uppercase font-bold">Checkpoints</div>
+                    <div className="text-base font-bold text-[#4B3621] mt-0.5">{completedChecklistCount}/{totalChecklistCount}</div>
+                    <div className="text-[10px] text-[#1B5E20] font-semibold">{checklistCompletionPct}% Verified</div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-[#FAF7F2] border border-[#E7DED2]">
+                    <div className="text-[10px] font-mono text-[#8B735B] uppercase font-bold">GPS Accuracy</div>
+                    <div className="text-base font-bold text-[#1B5E20] mt-0.5">{report.gpsStatus.distanceDeviationMeters}m</div>
+                    <div className="text-[10px] text-[#8B735B]">Within Site Radius</div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-[#FAF7F2] border border-[#E7DED2]">
+                    <div className="text-[10px] font-mono text-[#8B735B] uppercase font-bold">Photos Captured</div>
+                    <div className="text-base font-bold text-[#4B3621] mt-0.5">{report.photos.length}</div>
+                    <div className="text-[10px] text-[#8B735B]">Proof Uploaded</div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-[#FAF7F2] border border-[#E7DED2]">
+                    <div className="text-[10px] font-mono text-[#8B735B] uppercase font-bold">Security Status</div>
+                    <div className={`text-base font-bold mt-0.5 ${report.finalVerdict === 'issue_found' ? 'text-[#C62828]' : 'text-[#1B5E20]'}`}>
+                      {report.finalVerdict === 'issue_found' ? 'Issues' : 'Nominal'}
+                    </div>
+                    <div className="text-[10px] text-[#8B735B]">
+                      {report.finalVerdict === 'issue_found' ? 'Action Required' : 'All Clear'}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="p-3.5 rounded-xl bg-[#FAF7F2] border border-[#E7DED2] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-bold text-[#4B3621] break-words">
@@ -391,27 +470,47 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                 </div>
               </div>
 
-              {/* Site Emergency Contacts Reference */}
-              <div className="p-4 rounded-xl bg-[#FAF7F2] border border-[#E7DED2]">
-                <div className="text-xs font-bold text-[#4B3621] mb-2">
-                  Site Contact & Escalation Protocol
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="p-2.5 rounded-lg bg-[#FFFFFF] border border-[#E7DED2]">
-                    <div className="text-[#8B735B] text-[11px]">Site Manager Contact</div>
-                    <div className="font-bold text-[#4B3621] mt-0.5">{site?.contactPerson || 'Martin Sterling'}</div>
-                    <div className="text-[#8B735B] text-[11px] flex items-center gap-1 mt-1 font-mono">
-                      <Phone className="w-3 h-3 text-[#6F4E37]" />
-                      <span>{site?.contactPhone || '+1 (555) 392-8811'}</span>
+              {/* Site Emergency Contacts Reference (Only in Owner Mode. In Officer Mode, redundant site details are removed) */}
+              {!isOfficerMode ? (
+                <div className="p-4 rounded-xl bg-[#FAF7F2] border border-[#E7DED2]">
+                  <div className="text-xs font-bold text-[#4B3621] mb-2">
+                    Site Contact & Escalation Protocol
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="p-2.5 rounded-lg bg-[#FFFFFF] border border-[#E7DED2]">
+                      <div className="text-[#8B735B] text-[11px]">Site Manager Contact</div>
+                      <div className="font-bold text-[#4B3621] mt-0.5">{site?.contactPerson || 'Martin Sterling'}</div>
+                      <div className="text-[#8B735B] text-[11px] flex items-center gap-1 mt-1 font-mono">
+                        <Phone className="w-3 h-3 text-[#6F4E37]" />
+                        <span>{site?.contactPhone || '+1 (555) 392-8811'}</span>
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-[#FFFFFF] border border-[#E7DED2]">
+                      <div className="text-[#8B735B] text-[11px]">Facility Address</div>
+                      <div className="font-semibold text-[#4B3621] mt-0.5">{site?.address || report.area}</div>
+                      <div className="text-[#1B5E20] text-[11px] mt-1 font-medium">Active 24/7 Security Coverage</div>
                     </div>
                   </div>
-                  <div className="p-2.5 rounded-lg bg-[#FFFFFF] border border-[#E7DED2]">
-                    <div className="text-[#8B735B] text-[11px]">Facility Address</div>
-                    <div className="font-semibold text-[#4B3621] mt-0.5">{site?.address || report.area}</div>
-                    <div className="text-[#1B5E20] text-[11px] mt-1 font-medium">Active 24/7 Security Coverage</div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-[#FAF7F2] border border-[#E7DED2] text-xs space-y-2.5">
+                  <div className="font-bold text-[#4B3621] text-xs">Patrol Submission Audit Log</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div className="p-2.5 rounded-lg bg-[#FFFFFF] border border-[#E7DED2]">
+                      <div className="text-[10px] text-[#8B735B] uppercase font-mono font-bold">Report Code</div>
+                      <div className="font-mono font-bold text-[#6F4E37] mt-0.5">{report.reportCode}</div>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-[#FFFFFF] border border-[#E7DED2]">
+                      <div className="text-[10px] text-[#8B735B] uppercase font-mono font-bold">Patrol Area</div>
+                      <div className="font-bold text-[#4B3621] mt-0.5">{report.area}</div>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-[#FFFFFF] border border-[#E7DED2]">
+                      <div className="text-[10px] text-[#8B735B] uppercase font-mono font-bold">Check-in Verification</div>
+                      <div className="font-mono font-bold text-[#1B5E20] mt-0.5">{report.gpsStatus.distanceDeviationMeters}m deviation</div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -501,20 +600,43 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
           )}
         </div>
 
-        {/* Modal Footer */}
-        <div className="p-4 border-t border-[#E7DED2] bg-[#FAF7F2] flex flex-wrap items-center justify-between gap-3 text-xs">
+        {/* Modal Footer (shrink-0 ensures buttons and audit info are never clipped) */}
+        <div className="p-4 border-t border-[#E7DED2] bg-[#FAF7F2] flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
           <div className="text-[#8B735B]">
-            Audit ID: <span className="font-mono text-[#4B3621] font-bold">{report.id}</span>
+            Report Code: <span className="font-mono text-[#4B3621] font-bold">{report.reportCode}</span>
           </div>
 
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-[#6F4E37] hover:bg-[#5A3E2B] text-white font-bold transition-colors cursor-pointer shadow-2xs"
-          >
-            Close Sheet
-          </button>
+          <div className="flex items-center gap-2">
+            {site && (
+              <button
+                type="button"
+                onClick={() => setIsSiteDownloadModalOpen(true)}
+                className="px-3.5 py-2 rounded-lg bg-[#FAF7F2] hover:bg-[#F0E8DD] text-[#6F4E37] border border-[#E7DED2] font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                title="Download Site Patrol Reports (दिन, हफ्ता, महीना)"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Download Site Reports (दैनिक / साप्ताहिक / मासिक)</span>
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg bg-[#6F4E37] hover:bg-[#5A3E2B] text-white font-bold transition-colors cursor-pointer shadow-2xs"
+            >
+              {isOfficerMode ? 'Close Report' : 'Close Sheet'}
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Site Reports Download Modal */}
+      {isSiteDownloadModalOpen && site && (
+        <SiteReportsDownloadModal
+          site={site}
+          reports={[report]}
+          onClose={() => setIsSiteDownloadModalOpen(false)}
+        />
+      )}
 
       {/* Lightbox Modal for Photo */}
       {selectedPhoto && (

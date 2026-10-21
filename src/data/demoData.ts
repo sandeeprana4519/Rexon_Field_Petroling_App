@@ -1,4 +1,4 @@
-import { Site, FieldOfficer, PatrolReport, IncidentRecord, Assignment, ChecklistItem } from '../types';
+import { Site, FieldOfficer, PatrolReport, IncidentRecord, Assignment, ChecklistItem, PatrolZone } from '../types';
 
 export const DEMO_AREAS = [
   'Area A - North Industrial',
@@ -7,6 +7,14 @@ export const DEMO_AREAS = [
   'Area D - Metro Port Facility',
   'Area E - East Warehousing Zone'
 ] as const;
+
+export const INITIAL_PATROL_ZONES: PatrolZone[] = [
+  { id: 'zone-1', name: 'Area A - North Industrial', code: 'ZONE-A', description: 'North Industrial manufacturing plants and heavy rail freight' },
+  { id: 'zone-2', name: 'Area B - Downtown Financial', code: 'ZONE-B', description: 'Downtown banking high-rises and financial headquarters' },
+  { id: 'zone-3', name: 'Area C - Westside Tech Campus', code: 'ZONE-C', description: 'Silicon tech parks, cleanrooms, and data infrastructure' },
+  { id: 'zone-4', name: 'Area D - Metro Port Facility', code: 'ZONE-D', description: 'Deepwater container port, docks, and customs holding' },
+  { id: 'zone-5', name: 'Area E - East Warehousing Zone', code: 'ZONE-E', description: 'Cold storage, regional e-commerce fulfillment hubs' }
+];
 
 export const MASTER_CHECKLIST_LIBRARY: ChecklistItem[] = [
   { id: 'mchk-1', title: 'Main gate and lock security check', category: 'Access Control', checked: true, isCritical: true, isActive: true },
@@ -408,6 +416,8 @@ export const DEMO_OFFICERS: FieldOfficer[] = [
     employeeId: 'REX-EMP-1001',
     badgeNumber: 'RF-101',
     name: 'Sandeep Rana',
+    email: 'sandeep@rexon.com',
+    password: 'rexon123',
     phone: '+1 (555) 301-4401',
     area: 'Area A - North Industrial',
     shift: 'Day',
@@ -427,6 +437,8 @@ export const DEMO_OFFICERS: FieldOfficer[] = [
     employeeId: 'REX-EMP-1002',
     badgeNumber: 'RF-102',
     name: 'Amit Kumar',
+    email: 'amit@rexon.com',
+    password: 'rexon123',
     phone: '+1 (555) 301-4402',
     area: 'Area B - Downtown Financial',
     shift: 'Day',
@@ -445,6 +457,8 @@ export const DEMO_OFFICERS: FieldOfficer[] = [
     employeeId: 'REX-EMP-1004',
     badgeNumber: 'RF-104',
     name: 'Marcus Vance',
+    email: 'marcus@rexon.com',
+    password: 'rexon123',
     phone: '+1 (555) 301-4491',
     area: 'Area A - North Industrial',
     shift: 'Day',
@@ -463,6 +477,8 @@ export const DEMO_OFFICERS: FieldOfficer[] = [
     employeeId: 'REX-EMP-1012',
     badgeNumber: 'RF-112',
     name: 'Sarah Chen',
+    email: 'sarah@rexon.com',
+    password: 'rexon123',
     phone: '+1 (555) 782-9904',
     area: 'Area B - Downtown Financial',
     shift: 'Day',
@@ -481,6 +497,8 @@ export const DEMO_OFFICERS: FieldOfficer[] = [
     employeeId: 'REX-EMP-1018',
     badgeNumber: 'RF-118',
     name: 'David Kalu',
+    email: 'david@rexon.com',
+    password: 'rexon123',
     phone: '+1 (555) 419-5520',
     area: 'Area C - Westside Tech Campus',
     shift: 'Day',
@@ -499,6 +517,8 @@ export const DEMO_OFFICERS: FieldOfficer[] = [
     employeeId: 'REX-EMP-1027',
     badgeNumber: 'RF-127',
     name: 'Elena Rostova',
+    email: 'elena@rexon.com',
+    password: 'rexon123',
     phone: '+1 (555) 662-8119',
     area: 'Area B - Downtown Financial',
     shift: 'Day',
@@ -517,6 +537,8 @@ export const DEMO_OFFICERS: FieldOfficer[] = [
     employeeId: 'REX-EMP-1042',
     badgeNumber: 'RF-142',
     name: 'Tariq Mansoor',
+    email: 'tariq@rexon.com',
+    password: 'rexon123',
     phone: '+1 (555) 923-4017',
     area: 'Area D - Metro Port Facility',
     shift: 'Day',
@@ -535,6 +557,8 @@ export const DEMO_OFFICERS: FieldOfficer[] = [
     employeeId: 'REX-EMP-1059',
     badgeNumber: 'RF-159',
     name: 'Lucas Meyer',
+    email: 'lucas@rexon.com',
+    password: 'rexon123',
     phone: '+1 (555) 819-3221',
     area: 'Area A - North Industrial',
     shift: 'Night',

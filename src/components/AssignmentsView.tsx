@@ -27,6 +27,7 @@ interface AssignmentsViewProps {
   assignments: Assignment[];
   sites: Site[];
   officers: FieldOfficer[];
+  areas?: string[];
   onAddAssignments: (newAssignments: Assignment[]) => void;
   onUpdateAssignment: (assignment: Assignment) => void;
   onCancelAssignment: (assignmentId: string) => void;
@@ -68,6 +69,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
   assignments,
   sites,
   officers,
+  areas = [...DEMO_AREAS],
   onAddAssignments,
   onUpdateAssignment,
   onCancelAssignment

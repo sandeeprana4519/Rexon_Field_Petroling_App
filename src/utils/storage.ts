@@ -14,7 +14,9 @@ const STORAGE_KEYS = {
   ASSIGNMENTS: 'rexon_demo_assignments_v2',
   REPORTS: 'rexon_demo_reports_v2',
   INCIDENTS: 'rexon_demo_incidents_v2',
-  CHECKLISTS: 'rexon_demo_master_checklists_v2'
+  CHECKLISTS: 'rexon_demo_master_checklists_v2',
+  AREAS: 'rexon_demo_areas_v2',
+  OFFICER_AUTH: 'rexon_officer_auth_session'
 };
 
 export const loadFromStorage = <T>(key: string, defaultValue: T): T => {

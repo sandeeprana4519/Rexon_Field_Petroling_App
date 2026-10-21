@@ -81,6 +81,8 @@ export interface FieldOfficer {
   badgeNumber: string; // e.g. "RF-101"
   name: string;
   phone: string;
+  email?: string;
+  password?: string;
   area: string;
   shift: OfficerShift;
   status: OfficerStatus;
@@ -153,6 +155,14 @@ export interface Assignment {
   notes: string;
 }
 
+export interface PatrolZone {
+  id: string;
+  name: string;
+  code?: string;
+  description?: string;
+  createdAt?: string;
+}
+
 export interface FilterState {
   date: string; // 'all' | 'today' | 'yesterday' | 'last_7_days'
   area: string; // 'all' | area name
@@ -169,4 +179,5 @@ export type NavigationTab =
   | 'reports' 
   | 'incidents' 
   | 'assignments' 
+  | 'zones'
   | 'settings';

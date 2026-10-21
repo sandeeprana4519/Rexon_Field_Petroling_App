@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   LayoutDashboard,
   Building2,
@@ -6,6 +5,7 @@ import {
   FileCheck2,
   AlertOctagon,
   CalendarCheck,
+  Compass,
   Settings,
   ShieldCheck,
   X
@@ -44,6 +44,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: LayoutDashboard
     },
     {
+      id: 'assignments',
+      label: 'Assignments',
+      icon: CalendarCheck
+    },
+    {
       id: 'sites',
       label: 'Sites',
       icon: Building2
@@ -56,8 +61,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'text-[#4B3621] bg-[#F0E8DD] border border-[#E7DED2]'
     },
     {
+      id: 'zones',
+      label: 'Patrol Zones',
+      icon: Compass
+    },
+    {
       id: 'reports',
-      label: 'Patrol Reports',
+      label: 'Patrol Reports / Areas',
       icon: FileCheck2,
       badge: missedPatrolsCount > 0 ? missedPatrolsCount : undefined,
       badgeColor: 'text-[#92400E] bg-[#FEF3C7] border border-[#FDE68A]'
@@ -70,14 +80,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'text-[#C62828] bg-[#FFEBEE] border border-[#FFCDD2]'
     },
     {
-      id: 'assignments',
-      label: 'Assignments',
-      icon: CalendarCheck
-    },
-    {
       id: 'settings',
-      label: 'Settings',
-      icon: Settings
+      label: 'Security & Settings',
+      icon: ShieldCheck
     }
   ];
 
