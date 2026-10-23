@@ -20,9 +20,14 @@ import {
   Calendar,
   FileSpreadsheet,
   Mail,
-  KeyRound
+  KeyRound,
+  Smartphone,
+  Eye,
+  EyeOff,
+  Trash2,
+  Compass
 } from 'lucide-react';
-import { FieldOfficer, Site, OfficerShift, OfficerEmploymentStatus, PatrolReport, Assignment } from '../types';
+import { FieldOfficer, Site, OfficerShift, OfficerEmploymentStatus, PatrolReport, Assignment, PatrolZone } from '../types';
 import { DEMO_AREAS } from '../data/demoData';
 import { OfficerDailyReportModal } from './OfficerDailyReportModal';
 
@@ -30,25 +35,42 @@ interface FieldOfficersViewProps {
   officers: FieldOfficer[];
   sites: Site[];
   areas?: string[];
+  zones?: PatrolZone[];
   reports?: PatrolReport[];
   assignments?: Assignment[];
   onSaveOfficer: (officer: FieldOfficer) => void;
   onToggleOfficerStatus: (officerId: string) => void;
+  onDeleteOfficer?: (officerId: string) => void;
   onFilterByOfficer: (officerId: string) => void;
   onSelectReport?: (report: PatrolReport) => void;
+  onLaunchOfficerApp?: (officer: FieldOfficer) => void;
 }
 
 export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
   officers,
   sites,
   areas = [...DEMO_AREAS],
+  zones = [],
   reports = [],
   assignments = [],
   onSaveOfficer,
   onToggleOfficerStatus,
+  onDeleteOfficer,
   onFilterByOfficer,
-  onSelectReport
+  onSelectReport,
+  onLaunchOfficerApp
 }) => {
+  // Available Patrol Zones (prioritizes active configured zones like आदर्श नगर, खंडकाम, etc.)
+  const availableZoneList = useMemo(() => {
+    if (zones && zones.length > 0) {
+      return zones.map((z) => z.name);
+    }
+    if (areas && areas.length > 0) {
+      return areas;
+    }
+    return [...DEMO_AREAS];
+  }, [zones, areas]);
+
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedArea, setSelectedArea] = useState('all');
@@ -70,10 +92,11 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
     email: '',
     password: 'rexon123',
     phone: '',
-    area: DEMO_AREAS[0] as string,
+    area: availableZoneList[0] || (DEMO_AREAS[0] as string),
     shift: 'Day' as OfficerShift,
     employmentStatus: 'active' as OfficerEmploymentStatus
   });
+
 
   const filteredOfficers = useMemo(() => {
     return officers.filter((off) => {
@@ -107,10 +130,10 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
     setFormData({
       name: '',
       employeeId: `REX-EMP-${nextEmpNum}`,
-      email: '',
+      email: `officer${nextEmpNum}@rexon.com`,
       password: 'rexon123',
       phone: '+1 (555) 301-4400',
-      area: DEMO_AREAS[0],
+      area: availableZoneList[0] || 'Area A - North Industrial',
       shift: 'Day',
       employmentStatus: 'active'
     });
@@ -125,12 +148,13 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
       email: officer.email || '',
       password: officer.password || 'rexon123',
       phone: officer.phone,
-      area: officer.area,
+      area: officer.area || availableZoneList[0] || 'Area A - North Industrial',
       shift: officer.shift,
       employmentStatus: officer.employmentStatus
     });
     setIsFormModalOpen(true);
   };
+
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -293,22 +317,25 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
             </div>
           </div>
 
-          {/* 2. Area */}
+          {/* 2. Patrol Zone */}
           <div>
-            <label className="block text-[#4B3621] font-semibold text-[11px] mb-1">Assigned Area</label>
+            <label className="block text-[#4B3621] font-semibold text-[11px] mb-1">
+              Patrol Zone (पेट्रोल ज़ोन)
+            </label>
             <select
               value={selectedArea}
               onChange={(e) => setSelectedArea(e.target.value)}
               className="w-full px-2.5 py-1.5 bg-[#FFFFFF] border border-[#E7DED2] rounded-lg text-[#4B3621] focus:outline-none focus:border-[#6F4E37] cursor-pointer"
             >
-              <option value="all">All Areas ({areas.length})</option>
-              {areas.map((a) => (
+              <option value="all">All Patrol Zones ({availableZoneList.length})</option>
+              {availableZoneList.map((a) => (
                 <option key={a} value={a}>
                   {a}
                 </option>
               ))}
             </select>
           </div>
+
 
           {/* 3. Employment Status */}
           <div>
@@ -400,7 +427,7 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Phone, Email & Area Info */}
+                  {/* Phone & Area Info */}
                   <div className="space-y-1 text-xs text-[#8B735B] mb-2.5">
                     <div className="flex items-center justify-between">
                       <span className="flex items-center gap-1 text-[11px] text-[#4B3621] font-medium">
@@ -409,13 +436,46 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
                       </span>
                       <span className="font-mono text-[11px] text-[#8B735B] font-semibold">{officer.shift} Shift</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-[11px] text-[#4B3621] font-mono">
-                      <Mail className="w-3 h-3 text-[#6F4E37] shrink-0" />
-                      <span className="truncate">{officer.email || `${officer.name.toLowerCase().replace(/\s+/g, '')}@rexon.com`}</span>
-                    </div>
                     <div className="flex items-center gap-1.5 text-[11px] text-[#8B735B]">
                       <MapPin className="w-3.5 h-3.5 text-[#6F4E37] shrink-0" />
-                      <span>{officer.area}</span>
+                      <span>Patrol Zone: <strong className="text-[#4B3621] font-semibold">{officer.area}</strong></span>
+                    </div>
+
+                  </div>
+
+                  {/* Officer Mobile App Login Credentials (Email & Password) */}
+                  <div className="p-2.5 rounded-xl bg-[#FAF5EE] border border-[#DFCBB9] mb-2.5 shadow-2xs">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-[#4B3621] mb-2 pb-1.5 border-b border-[#E8DACB]">
+                      <div className="flex items-center gap-1.5">
+                        <Smartphone className="w-3.5 h-3.5 text-[#6F4E37]" />
+                        <span>Officer App Login (ऐप लॉगिन)</span>
+                      </div>
+                      {onLaunchOfficerApp && (
+                        <button
+                          type="button"
+                          onClick={() => onLaunchOfficerApp(officer)}
+                          className="inline-flex items-center gap-1 text-[10px] font-bold text-[#6F4E37] hover:text-[#4B3621] hover:underline cursor-pointer"
+                          title="Open Officer App directly with this account"
+                        >
+                          <span>लॉगिन करें →</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between gap-1.5 bg-[#FFFFFF] px-2 py-1 rounded-md border border-[#E7DED2]">
+                        <span className="text-[10px] text-[#8B735B] font-bold uppercase shrink-0">Mail / ID:</span>
+                        <span className="font-mono text-[11px] text-[#4B3621] font-semibold truncate" title={officer.email || `${officer.name.toLowerCase().replace(/\s+/g, '')}@rexon.com`}>
+                          {officer.email || `${officer.name.toLowerCase().replace(/\s+/g, '')}@rexon.com`}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-1.5 bg-[#FFFFFF] px-2 py-1 rounded-md border border-[#E7DED2]">
+                        <span className="text-[10px] text-[#8B735B] font-bold uppercase shrink-0">Password:</span>
+                        <span className="font-mono text-[11px] text-[#6F4E37] font-bold">
+                          {officer.password || 'rexon123'}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -489,7 +549,22 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
                       >
                         <Radio className="w-3 h-3 text-[#6F4E37]" />
                       </button>
+                      {onDeleteOfficer && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Are you sure you want to remove Field Officer "${officer.name}" (${officer.badgeNumber}) from the patrol roster?`)) {
+                              onDeleteOfficer(officer.id);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 p-1 text-xs rounded bg-[#FAF7F2] hover:bg-[#FFEBEE] text-[#8B735B] hover:text-[#C62828] border border-[#E7DED2] hover:border-[#FFCDD2] transition-colors cursor-pointer"
+                          title="Remove officer from roster (फील्ड ऑफिसर हटाएं)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
+
 
                     <button
                       type="button"
@@ -568,43 +643,80 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#4B3621] mb-1 font-semibold">Login Email ID</label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="e.g. officer@rexon.com"
-                    className="w-full px-3 py-1.5 bg-[#FFFFFF] border border-[#E7DED2] rounded-lg text-[#4B3621] focus:outline-none focus:border-[#6F4E37]"
-                  />
+                  <label className="block text-[#4B3621] mb-1 font-semibold flex items-center justify-between">
+                    <span>Login Email ID * (लॉगिन ईमेल)</span>
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-[#8B735B] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="email"
+                      required
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      placeholder="e.g. officer@rexon.com"
+                      className="w-full pl-8 pr-3 py-1.5 bg-[#FFFFFF] border border-[#E7DED2] rounded-lg text-[#4B3621] focus:outline-none focus:border-[#6F4E37] text-xs font-mono"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-[#4B3621] mb-1 font-semibold">Portal Password</label>
-                  <input
-                    type="text"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="Default: rexon123"
-                    className="w-full px-3 py-1.5 bg-[#FFFFFF] border border-[#E7DED2] rounded-lg text-[#4B3621] font-mono focus:outline-none focus:border-[#6F4E37]"
-                  />
+                  <label className="block text-[#4B3621] mb-1 font-semibold flex items-center justify-between">
+                    <span>App Password * (ऐप पासवर्ड)</span>
+                  </label>
+                  <div className="relative">
+                    <KeyRound className="w-4 h-4 text-[#8B735B] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      required
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      placeholder="Default: rexon123"
+                      className="w-full pl-8 pr-3 py-1.5 bg-[#FFFFFF] border border-[#E7DED2] rounded-lg text-[#4B3621] font-mono font-bold focus:outline-none focus:border-[#6F4E37] text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Login Instructions Note for Officer Application */}
+              <div className="p-2.5 bg-[#F8F5EF] rounded-xl border border-[#D7C4B2] text-xs text-[#6F4E37] flex items-start gap-2">
+                <Smartphone className="w-4 h-4 shrink-0 mt-0.5 text-[#6F4E37]" />
+                <div className="text-[11px] leading-relaxed">
+                  <strong>फील्ड ऑफिसर ऐप लॉगिन (Officer Mobile App):</strong> फील्ड ऑफिसर अपने मोबाइल या टैबलेट ऐप में इसी <strong>ईमेल आईडी</strong> और <strong>पासवर्ड</strong> के साथ सीधे लॉगिन कर सकेंगे।
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#4B3621] mb-1 font-semibold">Assigned Patrol Area *</label>
+                  <label className="block text-[#4B3621] mb-1 font-semibold flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Compass className="w-3.5 h-3.5 text-[#6F4E37]" />
+                      <span>Patrol Zone * (पेट्रोलिंग ज़ोन)</span>
+                    </span>
+                    <span className="text-[10px] text-[#6F4E37] font-semibold bg-[#F0E8DD] px-1.5 py-0.5 rounded border border-[#E7DED2]">
+                      {availableZoneList.length} ज़ोन उपलब्ध
+                    </span>
+                  </label>
                   <select
                     value={formData.area}
                     onChange={(e) => setFormData({ ...formData, area: e.target.value })}
-                    className="w-full px-3 py-1.5 bg-[#FFFFFF] border border-[#E7DED2] rounded-lg text-[#4B3621] focus:outline-none focus:border-[#6F4E37] cursor-pointer"
+                    className="w-full px-3 py-1.5 bg-[#FFFFFF] border border-[#E7DED2] rounded-lg text-[#4B3621] font-medium focus:outline-none focus:border-[#6F4E37] cursor-pointer"
                   >
-                    {DEMO_AREAS.map((a) => (
-                      <option key={a} value={a}>
-                        {a}
-                      </option>
-                    ))}
+                    {availableZoneList.map((zoneName) => {
+                      const matchedZoneObj = zones.find(
+                        (z) => z.name.toLowerCase() === zoneName.toLowerCase()
+                      );
+                      return (
+                        <option key={zoneName} value={zoneName}>
+                          {zoneName} {matchedZoneObj?.code ? `[${matchedZoneObj.code}]` : ''}
+                        </option>
+                      );
+                    })}
                   </select>
+                  <p className="text-[10px] text-[#8B735B] mt-1">
+                    फील्ड ऑफिसर को इस पेट्रोलिंग ज़ोन की सभी साइट्स और चेकपॉइंट्स पर नियुक्त किया जाएगा।
+                  </p>
                 </div>
+
 
                 <div>
                   <label className="block text-[#4B3621] mb-1 font-semibold">Shift Assignment</label>
@@ -633,20 +745,40 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
                 </select>
               </div>
 
-              <div className="pt-3 border-t border-[#E7DED2] flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsFormModalOpen(false)}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#F0E8DD] text-[#4B3621] hover:bg-[#E8D8C5] transition-colors cursor-pointer font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-[#6F4E37] hover:bg-[#5A3E2B] text-white font-bold transition-colors cursor-pointer shadow-2xs"
-                >
-                  {editingOfficer ? 'Update Officer' : 'Register Officer'}
-                </button>
+              <div className="pt-3 border-t border-[#E7DED2] flex items-center justify-between gap-2">
+                <div>
+                  {editingOfficer && onDeleteOfficer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`Remove Officer "${editingOfficer.name}" (${editingOfficer.badgeNumber}) permanently from roster?`)) {
+                          onDeleteOfficer(editingOfficer.id);
+                          setIsFormModalOpen(false);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-[#FFEBEE] text-[#C62828] hover:bg-[#FFCDD2] border border-[#FFCDD2] text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Remove Officer (हटाएं)</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsFormModalOpen(false)}
+                    className="px-3.5 py-1.5 rounded-lg bg-[#F0E8DD] text-[#4B3621] hover:bg-[#E8D8C5] transition-colors cursor-pointer font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 rounded-lg bg-[#6F4E37] hover:bg-[#5A3E2B] text-white font-bold transition-colors cursor-pointer shadow-2xs"
+                  >
+                    {editingOfficer ? 'Update Officer' : 'Register Officer'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

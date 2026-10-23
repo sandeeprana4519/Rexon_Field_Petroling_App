@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -7,6 +7,13 @@ import {
   Clock,
   Compass,
   Camera,
+  Video,
+  UploadCloud,
+  RefreshCw,
+  Trash2,
+  Play,
+  FileVideo,
+  Image as ImageIcon,
   MessageSquare,
   Building2,
   MapPin,
@@ -15,7 +22,9 @@ import {
   HelpCircle,
   FileCheck2,
   X,
-  Mic
+  Mic,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import {
   Site,
@@ -25,16 +34,25 @@ import {
   IncidentSeverity,
   PatrolReport,
   IncidentRecord,
-  CheckpointPhoto
+  CheckpointPhoto,
+  PatrolEvidenceItem,
+  EvidenceMediaType
 } from '../types';
 import { VoiceInputControl } from './VoiceInputControl';
+import {
+  uploadPatrolEvidence,
+  validateEvidenceFile,
+  checkFirebaseStorageAvailability,
+  StorageAvailabilityStatus
+} from '../services/storageService';
+import { DEFAULT_COMPANY_ID } from '../services/firestoreService';
 
 interface OfficerPatrolSessionProps {
   site: Site;
   officer: FieldOfficer;
   scheduledTime?: string;
   onClose: () => void;
-  onSubmitReport: (report: PatrolReport, newIncident?: IncidentRecord) => void;
+  onSubmitReport: (report: PatrolReport, newIncidents?: IncidentRecord[] | IncidentRecord) => void;
   onSwitchToOwnerDashboard: (reportId: string) => void;
 }
 
@@ -87,15 +105,39 @@ export const OfficerPatrolSession: React.FC<OfficerPatrolSessionProps> = ({
     'Conducted physical checkpoint audit. Perimeter secured; gate locks verified.'
   );
 
-  const [demoPhotos, setDemoPhotos] = useState<CheckpointPhoto[]>([
-    {
-      id: `p-${Date.now()}-1`,
-      url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200"><rect width="320" height="200" fill="%23f0e8dd"/><rect x="10" y="10" width="300" height="180" fill="%23ffffff" stroke="%23e7ded2" stroke-width="2"/><text x="160" y="80" fill="%238b735b" font-family="sans-serif" font-size="11" text-anchor="middle" font-weight="bold">DEMO PHOTO CAPTURE</text><text x="160" y="105" fill="%234b3621" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Gate 1 Entrance Checkpoint</text><text x="160" y="130" fill="%232e7d32" font-family="monospace" font-size="10" text-anchor="middle">Simulated Time: Active Check-In</text></svg>',
-      caption: 'Main entrance gate padlock verification',
-      timestamp: checkInTime,
-      locationName: 'Main Entrance Gate'
-    }
-  ]);
+  // Stable report ID so that Cloud Storage paths exactly match the Firestore document ID
+  const reportIdRef = useRef<string>(`rep-${Date.now()}`);
+
+  // Firebase Storage availability status
+  const [storageStatus, setStorageStatus] = useState<StorageAvailabilityStatus>({
+    isAvailable: false,
+    bucketName: '',
+    message: 'Photo/video upload is currently unavailable. Firebase Storage setup is required.'
+  });
+  const [isCheckingStorage, setIsCheckingStorage] = useState(true);
+
+  // Evidence Photos and Videos state - starts empty (never show fake upload success)
+  const [evidenceItems, setEvidenceItems] = useState<CheckpointPhoto[]>([]);
+
+  // Check Storage availability on mount
+  useEffect(() => {
+    let isMounted = true;
+    checkFirebaseStorageAvailability().then((status) => {
+      if (isMounted) {
+        setStorageStatus(status);
+        setIsCheckingStorage(false);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Keep references to selected File objects to support immediate retry on failure
+  const rawFilesRef = useRef<Map<string, File>>(new Map());
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Validation & Submission State
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -134,16 +176,156 @@ export const OfficerPatrolSession: React.FC<OfficerPatrolSessionProps> = ({
     }));
   };
 
-  const handleAddDemoPhoto = () => {
-    const photoNumber = demoPhotos.length + 1;
-    const newPhoto: CheckpointPhoto = {
-      id: `p-${Date.now()}`,
-      url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200"><rect width="320" height="200" fill="%23f0e8dd"/><rect x="10" y="10" width="300" height="180" fill="%23ffffff" stroke="%236f4e37" stroke-dasharray="4"/><text x="160" y="85" fill="%236f4e37" font-family="sans-serif" font-size="11" text-anchor="middle" font-weight="bold">DEMO PHOTO #${photoNumber}</text><text x="160" y="110" fill="%234b3621" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Perimeter Checkpoint ${photoNumber}</text><text x="160" y="135" fill="%238b735b" font-family="monospace" font-size="10" text-anchor="middle">Timestamp: ${checkInTime}</text></svg>`,
-      caption: `Checkpoint #${photoNumber} security scan capture`,
-      timestamp: checkInTime,
-      locationName: `Perimeter Zone ${photoNumber}`
-    };
-    setDemoPhotos((prev) => [...prev, newPhoto]);
+  /**
+   * Initiates real upload of an evidence file to Firebase Storage
+   */
+  const startEvidenceUpload = (item: CheckpointPhoto, file: File) => {
+    const { promise } = uploadPatrolEvidence({
+      file,
+      companyId: DEFAULT_COMPANY_ID,
+      siteId: site.id,
+      reportId: reportIdRef.current,
+      evidenceId: item.id,
+      uploaderUid: officer.id,
+      caption: item.caption,
+      locationName: item.locationName,
+      onProgress: (percent) => {
+        setEvidenceItems((prev) =>
+          prev.map((it) => (it.id === item.id ? { ...it, uploadProgress: percent } : it))
+        );
+      }
+    });
+
+    promise
+      .then((res) => {
+        setEvidenceItems((prev) =>
+          prev.map((it) =>
+            it.id === item.id
+              ? {
+                  ...it,
+                  url: res.downloadUrl,
+                  storagePath: res.storagePath,
+                  uploadStatus: 'completed',
+                  uploadProgress: 100,
+                  errorMessage: undefined
+                }
+              : it
+          )
+        );
+      })
+      .catch((err: any) => {
+        console.warn('[Evidence Upload] Upload issue:', err);
+        setEvidenceItems((prev) =>
+          prev.map((it) =>
+            it.id === item.id
+              ? {
+                  ...it,
+                  uploadStatus: 'failed',
+                  errorMessage: err?.message || 'Photo/video upload is currently unavailable. Firebase Storage setup is required.'
+                }
+              : it
+          )
+        );
+      });
+  };
+
+  /**
+   * Handles user selecting a file from device camera, video recorder, or file picker
+   */
+  const handleFileSelected = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    forcedType?: EvidenceMediaType
+  ) => {
+    setValidationError(null);
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    if (!storageStatus.isAvailable) {
+      setValidationError('Photo/video upload is currently unavailable. Firebase Storage setup is required.');
+    }
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+
+      // Validate allowed file types and file-size limits before upload
+      const validation = validateEvidenceFile(file);
+      if (!validation.isValid) {
+        setValidationError(validation.error || 'Invalid file format or size.');
+        continue;
+      }
+
+      const mediaType: EvidenceMediaType = forcedType || validation.mediaType;
+      const evidenceId = `ev-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+
+      // Save raw File in ref map for retry support
+      rawFilesRef.current.set(evidenceId, file);
+
+      // Create preview object URL for device visual feedback
+      const previewUrl = URL.createObjectURL(file);
+
+      const newItem: CheckpointPhoto = {
+        id: evidenceId,
+        url: previewUrl,
+        caption: `${mediaType === 'video' ? 'Video Evidence' : 'Photo Evidence'} (${file.name})`,
+        timestamp: checkInTime,
+        locationName: site.name,
+        fileName: file.name,
+        contentType: file.type || (mediaType === 'video' ? 'video/mp4' : 'image/jpeg'),
+        fileSizeBytes: file.size,
+        uploadedAt: new Date().toISOString(),
+        uploaderUid: officer.id,
+        mediaType,
+        uploadStatus: storageStatus.isAvailable ? 'uploading' : 'failed',
+        uploadProgress: storageStatus.isAvailable ? 5 : 0,
+        errorMessage: storageStatus.isAvailable ? undefined : 'Photo/video upload is currently unavailable. Firebase Storage setup is required.'
+      };
+
+      setEvidenceItems((prev) => [...prev, newItem]);
+
+      if (storageStatus.isAvailable) {
+        startEvidenceUpload(newItem, file);
+      }
+    }
+
+    // Reset input value so same file can be re-selected if needed
+    e.target.value = '';
+  };
+
+  /**
+   * Retries an upload without losing form data or checklist responses
+   */
+  const handleRetryUpload = (itemId: string) => {
+    setValidationError(null);
+    const file = rawFilesRef.current.get(itemId);
+    const targetItem = evidenceItems.find((it) => it.id === itemId);
+
+    if (!file || !targetItem) {
+      setValidationError('Original file handle expired. Please re-select the file from your device.');
+      return;
+    }
+
+    if (!storageStatus.isAvailable) {
+      setValidationError('Photo/video upload is currently unavailable. Firebase Storage setup is required.');
+      return;
+    }
+
+    setEvidenceItems((prev) =>
+      prev.map((it) =>
+        it.id === itemId
+          ? { ...it, uploadStatus: 'uploading', uploadProgress: 10, errorMessage: undefined }
+          : it
+      )
+    );
+
+    startEvidenceUpload(targetItem, file);
+  };
+
+  /**
+   * Removes an evidence item before submitting report
+   */
+  const handleRemoveEvidence = (itemId: string) => {
+    rawFilesRef.current.delete(itemId);
+    setEvidenceItems((prev) => prev.filter((it) => it.id !== itemId));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -165,22 +347,31 @@ export const OfficerPatrolSession: React.FC<OfficerPatrolSessionProps> = ({
       }
     }
 
+    // Check if any evidence is actively uploading (prevent submitting mid-upload)
+    const uploadingItems = evidenceItems.filter((it) => it.uploadStatus === 'uploading');
+    if (uploadingItems.length > 0) {
+      setValidationError('Evidence upload in progress. Please wait for upload to complete before submitting.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     const now = new Date();
     const completedTimeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const todayDateString = '2026-10-20';
     const reportCode = `PTR-2026-${Math.floor(100 + Math.random() * 900)}`;
+    const effectiveReportId = reportIdRef.current;
 
     // Build checklist results list
     const finalChecklist = checklistTemplates.map((chk) => {
       const res = itemResults[chk.id];
+      const isIssue = res?.status === 'issue_found';
       return {
         ...chk,
-        checked: res.status === 'safe' || res.status === 'issue_found',
-        status: res.status,
-        issueDescription: res.status === 'issue_found' ? res.issueDescription : undefined,
-        issueSeverity: res.status === 'issue_found' ? res.issueSeverity : undefined
+        checked: res?.status === 'safe' || isIssue,
+        status: res?.status || 'safe',
+        ...(isIssue && res?.issueDescription ? { issueDescription: res.issueDescription.trim() } : {}),
+        ...(isIssue && res?.issueSeverity ? { issueSeverity: res.issueSeverity } : {})
       };
     });
 
@@ -193,9 +384,33 @@ export const OfficerPatrolSession: React.FC<OfficerPatrolSessionProps> = ({
 
     const finalVerdict = issuesFound.length > 0 ? 'issue_found' : 'completed';
 
+    // Build durable evidence metadata array for Firestore audit record
+    // Only real, verified Storage paths are stored; no binary strings or fake records
+    const verifiedCompletedEvidence = evidenceItems.filter(
+      (it) => it.uploadStatus === 'completed' && it.storagePath
+    );
+
+    const evidenceMetaList: PatrolEvidenceItem[] = verifiedCompletedEvidence.map((it) => ({
+      id: it.id,
+      storagePath: it.storagePath!,
+      downloadUrl: it.url?.startsWith('http') ? it.url : '',
+      originalFileName: it.fileName || `${it.id}.jpg`,
+      contentType: it.contentType || (it.mediaType === 'video' ? 'video/mp4' : 'image/jpeg'),
+      fileSizeBytes: it.fileSizeBytes || 0,
+      uploadedAt: it.uploadedAt || new Date().toISOString(),
+      uploaderUid: officer.id,
+      companyId: DEFAULT_COMPANY_ID,
+      siteId: site.id,
+      reportId: effectiveReportId,
+      mediaType: it.mediaType || 'photo',
+      caption: it.caption,
+      locationName: it.locationName,
+      checkpointId: it.checkpointId
+    }));
+
     // Construct Patrol Report object
     const newReport: PatrolReport = {
-      id: `rep-${Date.now()}`,
+      id: effectiveReportId,
       reportCode,
       siteId: site.id,
       siteName: site.name,
@@ -210,7 +425,8 @@ export const OfficerPatrolSession: React.FC<OfficerPatrolSessionProps> = ({
       status: 'completed',
       finalVerdict,
       checklist: finalChecklist,
-      photos: demoPhotos,
+      photos: verifiedCompletedEvidence,
+      evidenceItems: evidenceMetaList,
       officerRemarks,
       gpsStatus: {
         verified: true,
@@ -224,31 +440,33 @@ export const OfficerPatrolSession: React.FC<OfficerPatrolSessionProps> = ({
       incidents: []
     };
 
-    // If an issue was found, create an automatic incident record for owner desk
-    let createdIncident: IncidentRecord | undefined = undefined;
+    // If issues were found, create an incident record for EVERY flagged checkpoint
+    const createdIncidents: IncidentRecord[] = [];
     if (issuesFound.length > 0) {
-      const primaryIssue = issuesFound[0];
-      const incId = `INC-2026-${Math.floor(100 + Math.random() * 900)}`;
-      const incident: IncidentRecord = {
-        id: incId,
-        siteId: site.id,
-        siteName: site.name,
-        officerId: officer.id,
-        officerName: officer.name,
-        reportedAt: `${todayDateString} · ${checkInTime}`,
-        severity: primaryIssue.result.issueSeverity || 'high',
-        status: 'action_required',
-        title: `${primaryIssue.chk.title} - Security Issue`,
-        summary: primaryIssue.result.issueDescription,
-        actionsTaken: `Logged by Officer ${officer.name} during patrol inspection. Immediate site supervisor notification triggered.`,
-        photoCount: demoPhotos.length
-      };
+      issuesFound.forEach((item, index) => {
+        const incId = `INC-2026-${Math.floor(100 + Math.random() * 900)}-${index + 1}`;
+        const incident: IncidentRecord = {
+          id: incId,
+          siteId: site.id,
+          siteName: site.name,
+          officerId: officer.id,
+          officerName: officer.name,
+          reportedAt: `${todayDateString} · ${checkInTime}`,
+          severity: item.result.issueSeverity || 'high',
+          status: 'action_required',
+          title: `${item.chk.title} - Security Issue`,
+          summary: item.result.issueDescription?.trim() || `${item.chk.title} flagged with issue during patrol`,
+          actionsTaken: `Logged by Officer ${officer.name} during patrol inspection. Immediate site supervisor notification triggered.`,
+          photoCount: verifiedCompletedEvidence.length
+        };
+        createdIncidents.push(incident);
+      });
 
-      createdIncident = incident;
-      newReport.incidents = [incident];
+      newReport.incidents = createdIncidents;
+      newReport.incidentCount = createdIncidents.length;
     }
 
-    onSubmitReport(newReport, createdIncident);
+    onSubmitReport(newReport, createdIncidents);
     setSubmittedReport(newReport);
     setIsSubmitting(false);
   };
@@ -590,37 +808,221 @@ export const OfficerPatrolSession: React.FC<OfficerPatrolSessionProps> = ({
           </div>
         </div>
 
-        {/* 3. Evidence Photos (Demo Captures) */}
-        <div className="bg-[#FFFFFF] border border-[#E7DED2] rounded-xl p-4 space-y-3 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-[#4B3621]">
-              <Camera className="w-4 h-4 text-[#6F4E37]" />
-              <span>Inspection Photos & Evidence ({demoPhotos.length})</span>
+        {/* 3. Evidence Photos & Video Clips (Firebase Cloud Storage Real Evidence) */}
+        <div className="bg-[#FFFFFF] border border-[#E7DED2] rounded-xl p-4 space-y-3.5 shadow-2xs">
+          {/* Header */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-[#4B3621]">
+              <div className="w-6 h-6 rounded-md bg-[#FAF7F2] border border-[#E7DED2] flex items-center justify-center text-[#6F4E37]">
+                <Camera className="w-3.5 h-3.5" />
+              </div>
+              <span>Patrol Media Evidence & Proof ({evidenceItems.length})</span>
             </div>
-            <span className="text-[10px] font-mono text-[#8B735B]">Demo Simulated</span>
+            <div className="flex items-center gap-1.5 text-[10px] font-mono">
+              <span className="px-2 py-0.5 rounded bg-[#FAF7F2] text-[#8B735B] border border-[#E7DED2]">
+                Max: 15MB Image · 50MB Video
+              </span>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {demoPhotos.map((photo) => (
-              <div key={photo.id} className="relative aspect-video rounded-lg overflow-hidden border border-[#E7DED2] bg-[#FAF7F2]">
-                <img src={photo.url} alt={photo.caption} className="w-full h-full object-cover" />
-                <div className="absolute bottom-1 left-1 right-1 px-1 py-0.5 rounded bg-black/60 text-[9px] text-white truncate font-medium">
-                  {photo.caption}
+          {/* Storage Availability Banner */}
+          {!storageStatus.isAvailable && !isCheckingStorage && (
+            <div className="p-3.5 rounded-xl bg-[#FFF8E1] border border-[#FFE082] text-xs text-[#5D4037] flex items-start gap-2.5 shadow-2xs animate-in fade-in">
+              <AlertTriangle className="w-4 h-4 text-[#E65100] shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-bold text-[#E65100]">
+                  Photo/video upload is currently unavailable. Firebase Storage setup is required.
+                </div>
+                <div className="text-[11px] text-[#8B735B] leading-relaxed">
+                  All checkpoint checklists, notes, GPS coordinates, and incident reports remain fully functional and can be submitted without interruption. Evidence uploads will activate once the Storage bucket is provisioned in the Firebase Console.
                 </div>
               </div>
-            ))}
+            </div>
+          )}
 
+          {/* Action Buttons: Camera Capture, Video Recording, File Picker */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {/* 1. Take Photo (Direct Camera) */}
+            <input
+              type="file"
+              ref={photoInputRef}
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => handleFileSelected(e, 'photo')}
+            />
             <button
               type="button"
-              onClick={handleAddDemoPhoto}
-              className="aspect-video rounded-lg border border-dashed border-[#8B735B] hover:border-[#6F4E37] bg-[#FAF7F2] flex flex-col items-center justify-center text-xs text-[#8B735B] hover:text-[#4B3621] transition-colors cursor-pointer"
+              onClick={() => photoInputRef.current?.click()}
+              className="min-h-[44px] py-2 px-3 rounded-xl bg-[#6F4E37] hover:bg-[#5A3E2B] text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs select-none"
             >
-              <Camera className="w-4 h-4 mb-1 text-[#6F4E37]" />
-              <span className="text-[10px] font-bold">+ Take Photo</span>
+              <Camera className="w-4 h-4" />
+              <span>Take Photo</span>
+            </button>
+
+            {/* 2. Record Video (Direct Video Camera) */}
+            <input
+              type="file"
+              ref={videoInputRef}
+              accept="video/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => handleFileSelected(e, 'video')}
+            />
+            <button
+              type="button"
+              onClick={() => videoInputRef.current?.click()}
+              className="min-h-[44px] py-2 px-3 rounded-xl bg-[#4B3621] hover:bg-[#382818] text-white text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs select-none"
+            >
+              <Video className="w-4 h-4" />
+              <span>Record Video</span>
+            </button>
+
+            {/* 3. Browse Gallery / Device File */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/*,video/*"
+              className="hidden"
+              onChange={(e) => handleFileSelected(e)}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="min-h-[44px] py-2 px-3 rounded-xl bg-[#FAF7F2] hover:bg-[#F0E8DD] text-[#4B3621] border border-[#E7DED2] text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 select-none"
+            >
+              <UploadCloud className="w-4 h-4 text-[#6F4E37]" />
+              <span>Choose File</span>
             </button>
           </div>
-          <p className="text-[10px] text-[#8B735B]">
-            Photos are saved client-side in demo session and viewable on the Owner Dashboard.
+
+          {/* Evidence Items Grid */}
+          {evidenceItems.length === 0 ? (
+            <div className="p-6 rounded-xl bg-[#FAF7F2] border border-dashed border-[#E7DED2] text-center text-xs text-[#8B735B] space-y-1">
+              <Camera className="w-6 h-6 mx-auto text-[#8B735B]/60 mb-1" />
+              <div className="font-semibold text-[#4B3621]">No evidence items attached yet</div>
+              <div className="text-[11px]">Use buttons above to capture site photos or video clips with your device.</div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {evidenceItems.map((item) => {
+                const isVideo = item.mediaType === 'video' || item.contentType?.startsWith('video/');
+                const isUploading = item.uploadStatus === 'uploading';
+                const isFailed = item.uploadStatus === 'failed';
+                const isDone = item.uploadStatus === 'completed';
+
+                return (
+                  <div
+                    key={item.id}
+                    className="bg-[#FAF7F2] border border-[#E7DED2] rounded-xl overflow-hidden flex flex-col justify-between shadow-2xs transition-all relative"
+                  >
+                    {/* Media Preview Box */}
+                    <div className="relative aspect-video bg-black/10 overflow-hidden flex items-center justify-center">
+                      {isVideo ? (
+                        <video
+                          src={item.url}
+                          controls
+                          className="w-full h-full object-cover"
+                          preload="metadata"
+                        />
+                      ) : (
+                        <img
+                          src={item.url}
+                          alt={item.caption || 'Patrol evidence'}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+
+                      {/* Top Badges: Media Type & Timestamp */}
+                      <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider bg-black/70 text-white flex items-center gap-1">
+                          {isVideo ? <Video className="w-2.5 h-2.5 text-sky-400" /> : <ImageIcon className="w-2.5 h-2.5 text-amber-300" />}
+                          {isVideo ? 'VIDEO' : 'PHOTO'}
+                        </span>
+                        {item.fileSizeBytes && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-black/70 text-white">
+                            {(item.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Delete Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveEvidence(item.id)}
+                        title="Remove evidence"
+                        className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/70 hover:bg-[#C62828] text-white flex items-center justify-center transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+
+                      {/* Live Upload Progress Overlay */}
+                      {isUploading && (
+                        <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-3 text-white">
+                          <Loader2 className="w-6 h-6 animate-spin text-amber-400 mb-1.5" />
+                          <div className="text-[10px] font-mono font-bold tracking-wider">
+                            UPLOADING... {item.uploadProgress || 0}%
+                          </div>
+                          <div className="w-full max-w-[120px] bg-white/20 h-1.5 rounded-full mt-2 overflow-hidden">
+                            <div
+                              className="bg-amber-400 h-full transition-all duration-200"
+                              style={{ width: `${item.uploadProgress || 0}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Metadata & Status Card Content */}
+                    <div className="p-2.5 space-y-2 text-[11px]">
+                      <div>
+                        <div className="font-semibold text-[#4B3621] truncate" title={item.fileName || item.caption}>
+                          {item.fileName || item.caption || 'Evidence Capture'}
+                        </div>
+                        <div className="text-[10px] text-[#8B735B] flex items-center justify-between mt-0.5">
+                          <span>{item.timestamp || checkInTime}</span>
+                          <span className="font-mono text-[9px] truncate max-w-[100px]">{item.id}</span>
+                        </div>
+                      </div>
+
+                      {/* Status / Retry Controls */}
+                      {isDone && (
+                        <div className="flex items-center justify-between text-[10px] text-[#1B5E20] bg-[#E8F5E9] px-2 py-1 rounded border border-[#C8E6C9] font-medium">
+                          <span className="flex items-center gap-1 font-bold">
+                            <CheckCircle2 className="w-3 h-3 text-[#2E7D32]" />
+                            <span>Storage Ready</span>
+                          </span>
+                          <span className="font-mono text-[9px]">Verified</span>
+                        </div>
+                      )}
+
+                      {isFailed && (
+                        <div className="space-y-1.5 p-2 rounded bg-[#FFEBEE] border border-[#FFCDD2] text-[10px]">
+                          <div className="text-[#C62828] font-bold flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{item.errorMessage || 'Upload failed'}</span>
+                          </div>
+                          <div className="flex items-center justify-end gap-1.5 pt-0.5">
+                            <button
+                              type="button"
+                              onClick={() => handleRetryUpload(item.id)}
+                              className="px-2 py-1 rounded bg-[#C62828] hover:bg-[#B71C1C] text-white font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                            >
+                              <RefreshCw className="w-2.5 h-2.5" />
+                              <span>Retry Upload</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <p className="text-[10px] text-[#8B735B] leading-relaxed">
+            All captured photos and video clips are validated and transferred to Firebase Cloud Storage with strict least-privilege company boundaries. Evidence file handles are preserved locally so uploads can be retried without losing checkpoint notes.
           </p>
         </div>
 

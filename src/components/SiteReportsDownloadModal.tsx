@@ -24,7 +24,8 @@ import {
   CalendarRange,
   TableProperties,
   LayoutGrid,
-  Check
+  Check,
+  Video
 } from 'lucide-react';
 import { Site, PatrolReport, Assignment, FieldOfficer, IncidentRecord } from '../types';
 
@@ -1321,25 +1322,35 @@ export const SiteReportsDownloadModal: React.FC<SiteReportsDownloadModalProps> =
                       <div className="space-y-1.5">
                         <div className="text-[10px] font-bold text-[#8B735B] uppercase flex items-center gap-1">
                           <Camera className="w-3 h-3 text-[#6F4E37]" />
-                          <span>Photographic Evidence Captured ({item.photos.length}):</span>
+                          <span>Patrol Media Evidence ({item.photos.length}):</span>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {item.photos.map((photo, pIdx) => (
-                            <div
-                              key={photo.id || pIdx}
-                              onClick={() => setSelectedPhoto(photo.url)}
-                              className="cursor-pointer group relative rounded-lg overflow-hidden border border-[#E7DED2] hover:border-[#6F4E37] transition-all"
-                            >
-                              <img
-                                src={photo.url}
-                                alt={photo.caption || 'Patrol photo'}
-                                className="w-20 h-16 object-cover"
-                              />
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition-opacity">
-                                Zoom
+                          {item.photos.map((photo, pIdx) => {
+                            const isVid = photo.mediaType === 'video' || photo.contentType?.startsWith('video/') || photo.url.includes('.mp4');
+                            return (
+                              <div
+                                key={photo.id || pIdx}
+                                onClick={() => setSelectedPhoto(photo.url)}
+                                className="cursor-pointer group relative rounded-lg overflow-hidden border border-[#E7DED2] hover:border-[#6F4E37] transition-all bg-black/5"
+                              >
+                                {isVid ? (
+                                  <div className="w-20 h-16 bg-[#332211] flex flex-col items-center justify-center text-white">
+                                    <Video className="w-5 h-5 text-sky-400 mb-0.5" />
+                                    <span className="text-[8px] font-mono font-bold uppercase tracking-wider">VIDEO</span>
+                                  </div>
+                                ) : (
+                                  <img
+                                    src={photo.url}
+                                    alt={photo.caption || 'Patrol photo'}
+                                    className="w-20 h-16 object-cover"
+                                  />
+                                )}
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition-opacity">
+                                  {isVid ? 'Play' : 'Zoom'}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -1585,19 +1596,28 @@ export const SiteReportsDownloadModal: React.FC<SiteReportsDownloadModalProps> =
         </div>
       )}
 
-      {/* Lightbox for Photo Zoom */}
+      {/* Lightbox for Photo or Video Zoom */}
       {selectedPhoto && (
         <div
           onClick={() => setSelectedPhoto(null)}
           className="fixed inset-0 z-70 bg-black/85 flex items-center justify-center p-4 cursor-pointer"
         >
-          <div className="max-w-2xl w-full">
-            <img
-              src={selectedPhoto}
-              alt="Evidence Zoom"
-              className="w-full rounded-2xl border-2 border-white shadow-2xl"
-            />
-            <p className="text-center text-xs text-white/80 mt-2 font-medium">Click anywhere to close preview</p>
+          <div className="max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+            {selectedPhoto.endsWith('.mp4') || selectedPhoto.includes('video') ? (
+              <video
+                src={selectedPhoto}
+                controls
+                autoPlay
+                className="w-full max-h-[80vh] rounded-2xl border-2 border-white/20 shadow-2xl bg-black"
+              />
+            ) : (
+              <img
+                src={selectedPhoto}
+                alt="Evidence Zoom"
+                className="w-full max-h-[80vh] object-contain rounded-2xl border-2 border-white shadow-2xl"
+              />
+            )}
+            <p className="text-center text-xs text-white/80 mt-2 font-medium">Click outside to close preview</p>
           </div>
         </div>
       )}

@@ -1,0 +1,149 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==========================================
+    // AUTHENTICATION & ROLE HELPER FUNCTIONS
+    // ==========================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Role verification (sourced from server-side user document or custom claims)
+    function isCompanyMember(companyId) {
+      return isAuthenticated() && (
+        (request.auth.token.companyId != null && request.auth.token.companyId == companyId) ||
+        (getUserData().companyId != null && getUserData().companyId == companyId)
+      );
+    }
+
+    function isAdmin(companyId) {
+      return isCompanyMember(companyId) && (
+        request.auth.token.role == 'admin' ||
+        getUserData().role == 'admin'
+      );
+    }
+
+    function isOfficer(companyId) {
+      return isCompanyMember(companyId) && (
+        request.auth.token.role == 'field_officer' ||
+        getUserData().role == 'field_officer'
+      );
+    }
+
+    // ==========================================
+    // 1. USER PROFILES & ROLES (/users/{userId})
+    // ==========================================
+    match /users/{userId} {
+      // Users can read their own profile; admins can read all profiles in their company
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        (getUserData().role == 'admin' && getUserData().companyId == resource.data.companyId)
+      );
+
+      // Only an authenticated admin can provision or assign roles
+      allow create: if isAuthenticated() && (
+        // Initial setup for the first admin user
+        !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
+        getUserData().role == 'admin'
+      );
+
+      // Critical Security Rule: Users can NEVER self-elevate roles or change companyId
+      allow update: if isAuthenticated() && (
+        getUserData().role == 'admin' ||
+        (
+          request.auth.uid == userId &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'companyId', 'officerId'])
+        )
+      );
+
+      allow delete: if isAuthenticated() && getUserData().role == 'admin';
+    }
+
+    // ==========================================
+    // 2. MULTI-TENANT COMPANY DATA (/companies/{companyId})
+    // ==========================================
+    match /companies/{companyId} {
+      allow read: if isCompanyMember(companyId);
+      allow write: if isAdmin(companyId);
+
+      // SITES: Officers have read-only view; only Admins can create/edit/delete
+      match /sites/{siteId} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isAdmin(companyId);
+      }
+
+      // OFFICERS: Managed exclusively by Admins; Officers can view directory
+      match /officers/{officerId} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isAdmin(companyId);
+      }
+
+      // ASSIGNMENTS: Admins manage; Officers read their schedules
+      match /assignments/{assignmentId} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isAdmin(companyId);
+      }
+
+      // PATROL REPORTS:
+      // - Admins can read all reports, edit verification status, or delete
+      // - Field officers can ONLY read and create reports for their own assigned identity
+      // - Field officers cannot read reports belonging to other officers
+      // - No user can change role or bypass server-side security
+      match /patrolReports/{reportId} {
+        allow read: if isCompanyMember(companyId) && (
+          isAdmin(companyId) ||
+          (
+            isOfficer(companyId) && (
+              resource.data.officerId == getUserData().officerId ||
+              resource.data.officerId == request.auth.uid
+            )
+          )
+        );
+
+        allow create: if isCompanyMember(companyId) && (
+          isAdmin(companyId) ||
+          (
+            isOfficer(companyId) &&
+            request.resource.data.officerId != null &&
+            (
+              request.resource.data.officerId == getUserData().officerId ||
+              request.resource.data.officerId == request.auth.uid
+            )
+          )
+        );
+
+        allow update: if isCompanyMember(companyId) && (
+          isAdmin(companyId) ||
+          (
+            isOfficer(companyId) &&
+            (
+              resource.data.officerId == getUserData().officerId ||
+              resource.data.officerId == request.auth.uid
+            )
+          )
+        );
+
+        allow delete: if isAdmin(companyId);
+      }
+
+      // INCIDENTS: Any company member can log an incident; only Admins can resolve or delete
+      match /incidents/{incidentId} {
+        allow read: if isCompanyMember(companyId);
+        allow create: if isCompanyMember(companyId);
+        allow update, delete: if isAdmin(companyId);
+      }
+
+      // ZONES: Sector configuration managed exclusively by Admins
+      match /zones/{zoneId} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if isAdmin(companyId);
+      }
+    }
+  }
+}

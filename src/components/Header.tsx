@@ -9,6 +9,8 @@ interface HeaderProps {
   onMobileMenuToggle: () => void;
   onRefreshData: () => void;
   isRefreshing: boolean;
+  companyName?: string;
+  ownerName?: string;
 }
 
 const TAB_TITLES: Record<NavigationTab, { title: string; subtitle: string }> = {
@@ -28,9 +30,12 @@ export const Header: React.FC<HeaderProps> = ({
   onSwitchAppMode,
   onMobileMenuToggle,
   onRefreshData,
-  isRefreshing
+  isRefreshing,
+  companyName = 'Rexon Field Patrolling App',
+  ownerName = 'Cmdr. J. Reynolds'
 }) => {
   const currentInfo = TAB_TITLES[currentTab];
+
 
   return (
     <header className="bg-[#FFFFFF] border-b border-[#E7DED2] px-4 sm:px-6 py-3.5 sticky top-0 z-30 shadow-2xs">
@@ -52,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                 <span className="text-xs sm:text-base font-bold text-[#4B3621] tracking-tight truncate">
-                  Rexon Field Patrolling App
+                  {companyName}
                 </span>
                 <span className="hidden lg:inline-block text-xs text-[#8B735B] font-mono shrink-0">
                   / Owner Dashboard
@@ -90,10 +95,10 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div className="hidden lg:flex items-center gap-2.5 pl-2 border-l border-[#E7DED2]">
             <div className="w-7 h-7 rounded-full bg-[#E8D8C5] border border-[#E7DED2] flex items-center justify-center text-xs font-bold text-[#4B3621]">
-              JR
+              {ownerName.split(' ').map((n) => n[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'OP'}
             </div>
             <div className="text-left text-xs leading-tight">
-              <div className="font-semibold text-[#4B3621]">Cmdr. J. Reynolds</div>
+              <div className="font-semibold text-[#4B3621] truncate max-w-[140px]">{ownerName}</div>
               <div className="text-[11px] text-[#8B735B]">Security Owner</div>
             </div>
           </div>

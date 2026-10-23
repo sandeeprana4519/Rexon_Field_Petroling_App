@@ -12,7 +12,9 @@ import {
   Compass,
   Phone,
   Printer,
-  Calendar
+  Calendar,
+  Video,
+  Play
 } from 'lucide-react';
 import { PatrolReport, Site, IncidentRecord } from '../types';
 import { SiteReportsDownloadModal } from './SiteReportsDownloadModal';
@@ -44,88 +46,101 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150">
       <div className="bg-[#FFFFFF] border border-[#E7DED2] rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-[#4B3621]">
-        {/* Modal Header */}
-        <div className="p-4 sm:p-5 border-b border-[#E7DED2] bg-[#FAF7F2] flex items-start justify-between gap-4 shrink-0">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 mb-1.5">
-              <span className="px-2 py-0.5 rounded font-mono text-[10px] uppercase font-bold tracking-wider bg-[#F0E8DD] text-[#4B3621] border border-[#E7DED2]">
-                {report.reportCode}
-              </span>
-              <span className="text-xs text-[#8B735B]">·</span>
-              <span className="text-xs text-[#4B3621] font-semibold">{report.area}</span>
-              <span className="text-xs text-[#8B735B]">·</span>
-              <span className="text-xs font-mono text-[#1B5E20] bg-[#E8F5E9] px-2 py-0.5 rounded border border-[#C8E6C9] font-bold uppercase">
-                {report.status}
-              </span>
-              {report.finalVerdict && (
-                <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase border ${
-                  report.finalVerdict === 'issue_found'
-                    ? 'bg-[#FFEBEE] text-[#C62828] border-[#FFCDD2]'
-                    : 'bg-[#E8F5E9] text-[#1B5E20] border-[#C8E6C9]'
-                }`}>
-                  {report.finalVerdict === 'issue_found' ? 'Issues Logged' : 'All Clear'}
+        {/* Modal Header (Responsive & Clean - Prevents Mobile Squeeze) */}
+        <div className="p-3.5 sm:p-5 border-b border-[#E7DED2] bg-[#FAF7F2] shrink-0 space-y-3">
+          {/* Top Row: Badges, Title & Close Button */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <span className="px-2 py-0.5 rounded font-mono text-[10px] sm:text-xs uppercase font-bold tracking-wider bg-[#F0E8DD] text-[#4B3621] border border-[#E7DED2] whitespace-nowrap">
+                  {report.reportCode}
                 </span>
+                <span className="text-xs text-[#8B735B]">·</span>
+                <span className="text-xs text-[#4B3621] font-semibold whitespace-nowrap">{report.area}</span>
+                <span className="text-xs text-[#8B735B]">·</span>
+                <span className="text-[10px] sm:text-xs font-mono text-[#1B5E20] bg-[#E8F5E9] px-2 py-0.5 rounded border border-[#C8E6C9] font-bold uppercase whitespace-nowrap">
+                  {report.status}
+                </span>
+                {report.finalVerdict && (
+                  <span className={`text-[10px] sm:text-xs font-mono px-2 py-0.5 rounded font-bold uppercase border whitespace-nowrap ${
+                    report.finalVerdict === 'issue_found'
+                      ? 'bg-[#FFEBEE] text-[#C62828] border-[#FFCDD2]'
+                      : 'bg-[#E8F5E9] text-[#1B5E20] border-[#C8E6C9]'
+                  }`}>
+                    {report.finalVerdict === 'issue_found' ? 'Issues Logged' : 'All Clear'}
+                  </span>
+                )}
+              </div>
+
+              <h3 className="text-base sm:text-xl font-bold text-[#4B3621] tracking-tight flex items-center gap-2">
+                {isOfficerMode ? (
+                  <FileCheck className="w-5 h-5 text-[#6F4E37] shrink-0" />
+                ) : (
+                  <Building2 className="w-5 h-5 text-[#6F4E37] shrink-0" />
+                )}
+                <span className="leading-snug">
+                  {isOfficerMode ? `Submitted Patrol Report: ${report.siteName}` : report.siteName}
+                </span>
+              </h3>
+
+              {isOfficerMode ? (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#8B735B] pt-0.5">
+                  <span className="whitespace-nowrap">Officer: <strong className="text-[#4B3621] font-semibold">{report.officerName} ({report.officerBadge})</strong></span>
+                  <span className="hidden sm:inline">·</span>
+                  <span className="font-mono whitespace-nowrap">Completed: <strong className="text-[#4B3621]">{report.completedAt || report.actualCheckInTime || report.scheduledTime}</strong></span>
+                  <span className="hidden sm:inline">·</span>
+                  <span className="text-[#1B5E20] font-semibold font-mono whitespace-nowrap">GPS: {report.gpsStatus.distanceDeviationMeters}m deviation</span>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#8B735B] pt-0.5">
+                  <span className="whitespace-nowrap">Client: <strong className="text-[#4B3621] font-semibold">{site?.clientName || 'Contract Client'}</strong></span>
+                  <span className="hidden sm:inline">·</span>
+                  <span className="whitespace-nowrap">Officer: <strong className="text-[#4B3621] font-semibold">{report.officerName} ({report.officerBadge})</strong></span>
+                  <span className="hidden sm:inline">·</span>
+                  <span className="font-mono whitespace-nowrap">Scheduled: {report.scheduledTime}</span>
+                </div>
               )}
             </div>
 
-            <h3 className="text-base sm:text-xl font-bold text-[#4B3621] tracking-tight flex items-center gap-2 break-words">
-              {isOfficerMode ? (
-                <FileCheck className="w-5 h-5 text-[#6F4E37] shrink-0" />
-              ) : (
-                <Building2 className="w-5 h-5 text-[#6F4E37] shrink-0" />
-              )}
-              <span className="break-words">
-                {isOfficerMode ? `Submitted Patrol Report: ${report.siteName}` : report.siteName}
-              </span>
-            </h3>
-
-            {isOfficerMode ? (
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-[#8B735B] mt-1.5 leading-relaxed">
-                <span>Officer: <strong className="text-[#4B3621] font-semibold">{report.officerName} ({report.officerBadge})</strong></span>
-                <span>·</span>
-                <span className="font-mono">Completed: <strong className="text-[#4B3621]">{report.completedAt || report.actualCheckInTime || report.scheduledTime}</strong></span>
-                <span>·</span>
-                <span className="text-[#1B5E20] font-semibold font-mono">GPS: {report.gpsStatus.distanceDeviationMeters}m deviation</span>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-[#8B735B] mt-1.5 leading-relaxed">
-                <span>Client: <strong className="text-[#4B3621] font-semibold">{site?.clientName || 'Contract Client'}</strong></span>
-                <span>·</span>
-                <span>Officer: <strong className="text-[#4B3621] font-semibold">{report.officerName} ({report.officerBadge})</strong></span>
-                <span>·</span>
-                <span className="font-mono">Scheduled: {report.scheduledTime}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0 flex-wrap">
-            {site && (
-              <button
-                type="button"
-                onClick={() => setIsSiteDownloadModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#6F4E37] hover:bg-[#5A3E2B] text-white text-xs font-bold transition-colors cursor-pointer shadow-2xs"
-                title="Download Site Patrol Reports (दिन, हफ्ता, महीना)"
-              >
-                <Calendar className="w-3.5 h-3.5" />
-                <span>Download Report (दिन / हफ्ता / महीना)</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => window.print()}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FFFFFF] hover:bg-[#F0E8DD] text-[#4B3621] text-xs font-semibold border border-[#E7DED2] transition-colors cursor-pointer shadow-2xs"
-              title="Print Patrol Audit Sheet"
-            >
-              <Printer className="w-3.5 h-3.5 text-[#6F4E37]" />
-              <span>Print Sheet</span>
-            </button>
+            {/* Direct Close Button in Top Right */}
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg bg-[#F0E8DD] hover:bg-[#E8D8C5] text-[#4B3621] transition-colors cursor-pointer"
+              className="p-2 rounded-xl bg-[#F0E8DD] hover:bg-[#E8D8C5] text-[#4B3621] transition-colors cursor-pointer shrink-0"
               aria-label="Close modal"
+              title="Close modal"
             >
               <X className="w-5 h-5" />
             </button>
+          </div>
+
+          {/* Action Buttons Toolbar Row */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#E7DED2]/80">
+            <div className="flex flex-wrap items-center gap-2">
+              {site && (
+                <button
+                  type="button"
+                  onClick={() => setIsSiteDownloadModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#6F4E37] hover:bg-[#5A3E2B] text-white text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                  title="Download Site Patrol Reports (दिन, हफ्ता, महीना)"
+                >
+                  <Calendar className="w-3.5 h-3.5 shrink-0" />
+                  <span>Download Report (दिन / हफ्ता / महीना)</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FFFFFF] hover:bg-[#F0E8DD] text-[#4B3621] text-xs font-semibold border border-[#E7DED2] transition-colors cursor-pointer shadow-2xs"
+                title="Print Patrol Audit Sheet"
+              >
+                <Printer className="w-3.5 h-3.5 text-[#6F4E37] shrink-0" />
+                <span>Print Sheet (प्रिंट करें)</span>
+              </button>
+            </div>
+
+            <div className="text-[11px] font-mono text-[#8B735B]">
+              Audit Verified
+            </div>
           </div>
         </div>
 
@@ -398,39 +413,78 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
                 {report.photos.length === 0 ? (
                   <div className="p-8 rounded-xl bg-[#FAF7F2] border border-dashed border-[#E7DED2] text-center text-xs text-[#8B735B]">
                     <Camera className="w-8 h-8 text-[#8B735B] mx-auto mb-2" />
-                    <div>No checkpoint photos uploaded for this patrol yet.</div>
+                    <div>No checkpoint photos or videos uploaded for this patrol yet.</div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {report.photos.map((photo) => (
-                      <div
-                        key={photo.id}
-                        className="bg-[#FFFFFF] border border-[#E7DED2] rounded-xl overflow-hidden group cursor-pointer hover:border-[#8B735B] transition-colors shadow-2xs"
-                        onClick={() => setSelectedPhoto(photo.url)}
-                      >
-                        <div className="relative aspect-video bg-[#FAF7F2] overflow-hidden flex items-center justify-center">
-                          <img
-                            src={photo.url}
-                            alt={photo.caption}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                          />
-                          <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-xs text-[10px] font-mono text-white">
-                            {photo.timestamp}
-                          </div>
-                          <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-[#6F4E37] text-[10px] font-medium text-white shadow-xs">
-                            {photo.locationName}
-                          </div>
-                        </div>
+                    {report.photos.map((photo) => {
+                      const isVideo = photo.mediaType === 'video' || photo.contentType?.startsWith('video/') || photo.url.includes('.mp4');
 
-                        <div className="p-3">
-                          <p className="text-xs text-[#4B3621] font-semibold">{photo.caption}</p>
-                          <div className="text-[11px] text-[#8B735B] mt-1 flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-[#8B735B]" />
-                            <span>Location: {photo.locationName}</span>
+                      return (
+                        <div
+                          key={photo.id}
+                          className="bg-[#FFFFFF] border border-[#E7DED2] rounded-xl overflow-hidden group hover:border-[#8B735B] transition-colors shadow-2xs flex flex-col justify-between"
+                        >
+                          <div
+                            className="relative aspect-video bg-[#FAF7F2] overflow-hidden flex items-center justify-center cursor-pointer"
+                            onClick={() => setSelectedPhoto(photo.url)}
+                          >
+                            {isVideo ? (
+                              <video
+                                src={photo.url}
+                                controls
+                                className="w-full h-full object-cover"
+                                preload="metadata"
+                              />
+                            ) : (
+                              <img
+                                src={photo.url}
+                                alt={photo.caption}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                              />
+                            )}
+
+                            {/* Top Badges */}
+                            <div className="absolute top-2 left-2 flex items-center gap-1.5 pointer-events-none">
+                              <span className="px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-xs text-[9px] font-mono font-bold text-white uppercase tracking-wider flex items-center gap-1">
+                                {isVideo ? <Video className="w-2.5 h-2.5 text-sky-400" /> : <Camera className="w-2.5 h-2.5 text-amber-300" />}
+                                {isVideo ? 'VIDEO EVIDENCE' : 'PHOTO EVIDENCE'}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-xs text-[10px] font-mono text-white">
+                                {photo.timestamp}
+                              </span>
+                            </div>
+
+                            <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-[#6F4E37] text-[10px] font-medium text-white shadow-xs pointer-events-none">
+                              {photo.locationName}
+                            </div>
+                          </div>
+
+                          <div className="p-3 space-y-1.5">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-xs text-[#4B3621] font-semibold">{photo.caption}</p>
+                              {photo.fileSizeBytes && (
+                                <span className="font-mono text-[10px] text-[#8B735B] shrink-0">
+                                  {(photo.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="text-[11px] text-[#8B735B] flex items-center justify-between flex-wrap gap-1">
+                              <div className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-[#8B735B]" />
+                                <span>Location: {photo.locationName}</span>
+                              </div>
+                              {photo.storagePath && (
+                                <span className="text-[9px] font-mono text-[#1B5E20] bg-[#E8F5E9] px-1.5 py-0.2 rounded border border-[#C8E6C9]">
+                                  Cloud Storage Secured
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -601,29 +655,30 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
         </div>
 
         {/* Modal Footer (shrink-0 ensures buttons and audit info are never clipped) */}
-        <div className="p-4 border-t border-[#E7DED2] bg-[#FAF7F2] flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
-          <div className="text-[#8B735B]">
-            Report Code: <span className="font-mono text-[#4B3621] font-bold">{report.reportCode}</span>
+        <div className="p-3.5 sm:p-4 border-t border-[#E7DED2] bg-[#FAF7F2] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shrink-0">
+          <div className="text-[#8B735B] flex items-center gap-1.5">
+            <span>Report Code:</span>
+            <span className="font-mono text-[#4B3621] font-bold bg-[#F0E8DD] px-2 py-0.5 rounded border border-[#E7DED2]">{report.reportCode}</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
             {site && (
               <button
                 type="button"
                 onClick={() => setIsSiteDownloadModalOpen(true)}
-                className="px-3.5 py-2 rounded-lg bg-[#FAF7F2] hover:bg-[#F0E8DD] text-[#6F4E37] border border-[#E7DED2] font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                className="w-full sm:w-auto px-3.5 py-2 rounded-lg bg-[#FAF7F2] hover:bg-[#F0E8DD] text-[#6F4E37] border border-[#E7DED2] font-semibold text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
                 title="Download Site Patrol Reports (दिन, हफ्ता, महीना)"
               >
-                <Calendar className="w-3.5 h-3.5" />
-                <span>Download Site Reports (दैनिक / साप्ताहिक / मासिक)</span>
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                <span>Download Reports (रिपोर्ट डाउनलोड)</span>
               </button>
             )}
 
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-lg bg-[#6F4E37] hover:bg-[#5A3E2B] text-white font-bold transition-colors cursor-pointer shadow-2xs"
+              className="w-full sm:w-auto px-4 py-2 rounded-lg bg-[#6F4E37] hover:bg-[#5A3E2B] text-white font-bold transition-colors cursor-pointer shadow-2xs text-center"
             >
-              {isOfficerMode ? 'Close Report' : 'Close Sheet'}
+              {isOfficerMode ? 'Close Report (बंद करें)' : 'Close Sheet (बंद करें)'}
             </button>
           </div>
         </div>
@@ -638,15 +693,28 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
         />
       )}
 
-      {/* Lightbox Modal for Photo */}
+      {/* Lightbox Modal for Photo or Video */}
       {selectedPhoto && (
         <div
           onClick={() => setSelectedPhoto(null)}
-          className="fixed inset-0 z-60 bg-black/80 flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-60 bg-black/85 flex items-center justify-center p-4 cursor-pointer"
         >
-          <div className="max-w-2xl w-full">
-            <img src={selectedPhoto} alt="Evidence Zoom" className="w-full rounded-xl border-2 border-white shadow-2xl" />
-            <p className="text-center text-xs text-white/80 mt-2 font-medium">Click anywhere to close preview</p>
+          <div className="max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+            {selectedPhoto.endsWith('.mp4') || selectedPhoto.includes('video') || selectedPhoto.startsWith('blob:') && report.photos.find(p => p.url === selectedPhoto)?.mediaType === 'video' ? (
+              <video
+                src={selectedPhoto}
+                controls
+                autoPlay
+                className="w-full max-h-[80vh] rounded-xl border-2 border-white/20 shadow-2xl bg-black"
+              />
+            ) : (
+              <img
+                src={selectedPhoto}
+                alt="Evidence Zoom"
+                className="w-full max-h-[80vh] object-contain rounded-xl border-2 border-white/20 shadow-2xl"
+              />
+            )}
+            <p className="text-center text-xs text-white/80 mt-2 font-medium">Click outside to close preview</p>
           </div>
         </div>
       )}

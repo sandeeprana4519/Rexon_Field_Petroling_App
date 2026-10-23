@@ -38,6 +38,7 @@ interface SitesViewProps {
   onCreateZone?: (zone: PatrolZone) => void;
   onSaveSite: (site: Site) => void;
   onToggleSiteStatus: (siteId: string) => void;
+  onDeleteSite?: (siteId: string) => void;
   onSelectSiteReport: (report: PatrolReport) => void;
   onOpenChecklistManager: () => void;
   onOpenZonesManager?: () => void;
@@ -53,10 +54,12 @@ export const SitesView: React.FC<SitesViewProps> = ({
   onCreateZone,
   onSaveSite,
   onToggleSiteStatus,
+  onDeleteSite,
   onSelectSiteReport,
   onOpenChecklistManager,
   onOpenZonesManager
 }) => {
+
   // Available zones list (fallback to DEMO_AREAS if zones prop empty)
   const availableZoneNames = useMemo(() => {
     if (zones && zones.length > 0) {
@@ -559,19 +562,37 @@ export const SitesView: React.FC<SitesViewProps> = ({
                       </span>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => onToggleSiteStatus(site.id)}
-                      title={isSiteActive ? 'Deactivate Site' : 'Reactivate Site'}
-                      className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
-                        isSiteActive
-                          ? 'bg-[#FFFFFF] text-[#2E7D32] hover:bg-[#FFEBEE] hover:text-[#C62828] border-[#E7DED2] hover:border-[#FFCDD2]'
-                          : 'bg-[#FFFFFF] text-[#8B735B] hover:text-[#2E7D32] border-[#E7DED2]'
-                      }`}
-                    >
-                      <Power className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onToggleSiteStatus(site.id)}
+                        title={isSiteActive ? 'Deactivate Site' : 'Reactivate Site'}
+                        className={`p-1.5 rounded-lg border text-xs transition-colors cursor-pointer ${
+                          isSiteActive
+                            ? 'bg-[#FFFFFF] text-[#2E7D32] hover:bg-[#FFEBEE] hover:text-[#C62828] border-[#E7DED2] hover:border-[#FFCDD2]'
+                            : 'bg-[#FFFFFF] text-[#8B735B] hover:text-[#2E7D32] border-[#E7DED2]'
+                        }`}
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                      </button>
+
+                      {onDeleteSite && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Are you sure you want to remove site "${site.name}" from active monitored sites?`)) {
+                              onDeleteSite(site.id);
+                            }
+                          }}
+                          title="Delete Site (साइट हटाएं)"
+                          className="p-1.5 rounded-lg border border-[#E7DED2] hover:border-[#FFCDD2] bg-[#FFFFFF] hover:bg-[#FFEBEE] text-[#8B735B] hover:text-[#C62828] text-xs transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
+
 
                   {/* Site Name and Client */}
                   <div className="mb-2">
@@ -1139,20 +1160,40 @@ export const SitesView: React.FC<SitesViewProps> = ({
               </div>
 
               {/* Form Buttons */}
-              <div className="pt-3 border-t border-[#E7DED2] flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsFormModalOpen(false)}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#F0E8DD] text-[#4B3621] hover:bg-[#E8D8C5] transition-colors cursor-pointer font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-[#6F4E37] hover:bg-[#5A3E2B] text-white font-bold transition-colors cursor-pointer shadow-2xs"
-                >
-                  {editingSite ? 'Save Changes' : 'Create Site / सुरक्षित करें'}
-                </button>
+              <div className="pt-3 border-t border-[#E7DED2] flex items-center justify-between gap-2">
+                <div>
+                  {editingSite && onDeleteSite && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`Remove site "${editingSite.name}" permanently from monitored database?`)) {
+                          onDeleteSite(editingSite.id);
+                          setIsFormModalOpen(false);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-[#FFEBEE] text-[#C62828] hover:bg-[#FFCDD2] border border-[#FFCDD2] text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Site (हटाएं)</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsFormModalOpen(false)}
+                    className="px-3.5 py-1.5 rounded-lg bg-[#F0E8DD] text-[#4B3621] hover:bg-[#E8D8C5] transition-colors cursor-pointer font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 rounded-lg bg-[#6F4E37] hover:bg-[#5A3E2B] text-white font-bold transition-colors cursor-pointer shadow-2xs"
+                  >
+                    {editingSite ? 'Save Changes' : 'Create Site / सुरक्षित करें'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

@@ -13,8 +13,11 @@ export const INITIAL_PATROL_ZONES: PatrolZone[] = [
   { id: 'zone-2', name: 'Area B - Downtown Financial', code: 'ZONE-B', description: 'Downtown banking high-rises and financial headquarters' },
   { id: 'zone-3', name: 'Area C - Westside Tech Campus', code: 'ZONE-C', description: 'Silicon tech parks, cleanrooms, and data infrastructure' },
   { id: 'zone-4', name: 'Area D - Metro Port Facility', code: 'ZONE-D', description: 'Deepwater container port, docks, and customs holding' },
-  { id: 'zone-5', name: 'Area E - East Warehousing Zone', code: 'ZONE-E', description: 'Cold storage, regional e-commerce fulfillment hubs' }
+  { id: 'zone-5', name: 'Area E - East Warehousing Zone', code: 'ZONE-E', description: 'Cold storage, regional e-commerce fulfillment hubs' },
+  { id: 'zone-6', name: 'आदर्श नगर (Adarsh Nagar)', code: 'ZONE-AN', description: 'आदर्श नगर आवासीय व व्यावसायिक सुरक्षा पेट्रोलिंग सेक्टर' },
+  { id: 'zone-7', name: 'खंडकाम (Khandkam)', code: 'ZONE-KK', description: 'खंडकाम औद्योगिक एवं लॉजिस्टिक्स सुरक्षा ज़ोन' }
 ];
+
 
 export const MASTER_CHECKLIST_LIBRARY: ChecklistItem[] = [
   { id: 'mchk-1', title: 'Main gate and lock security check', category: 'Access Control', checked: true, isCritical: true, isActive: true },
@@ -1087,9 +1090,13 @@ export const DEMO_COMPANY_CONFIG = {
   appName: 'Rexon Field Patrolling App',
   ownerName: 'Commander J. Reynolds (Operations Director)',
   licenseId: 'SEC-OPS-9921-REX',
+  contactPhone: '+1 (555) 900-REXON',
+  alertDispatchPhone: '+1 (555) 900-REXON',
+  contactEmail: 'operations@rexonsecurity.com',
+  companyAddress: 'Suite 400, Security Boulevard, Metro City',
   gpsToleranceMeters: 50,
   missedPatrolThresholdMinutes: 30,
-  alertDispatchPhone: '+1 (555) 900-REXON',
   connectedOfficersCount: 8,
   activeShiftsCount: 6
 };
+

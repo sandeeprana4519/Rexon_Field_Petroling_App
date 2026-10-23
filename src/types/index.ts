@@ -24,12 +24,44 @@ export interface ChecklistItem {
   notes?: string;
 }
 
+export type EvidenceMediaType = 'photo' | 'video';
+export type EvidenceUploadStatus = 'uploading' | 'completed' | 'failed' | 'simulated';
+
 export interface CheckpointPhoto {
   id: string;
   url: string;
   caption: string;
   timestamp: string;
   locationName: string;
+  checkpointId?: string;
+  // Storage evidence metadata
+  storagePath?: string;
+  fileName?: string;
+  contentType?: string;
+  fileSizeBytes?: number;
+  uploadedAt?: string;
+  uploaderUid?: string;
+  mediaType?: EvidenceMediaType;
+  uploadStatus?: EvidenceUploadStatus;
+  uploadProgress?: number;
+  errorMessage?: string;
+}
+
+export interface PatrolEvidenceItem {
+  id: string;
+  storagePath: string;
+  downloadUrl?: string;
+  originalFileName: string;
+  contentType: string;
+  fileSizeBytes: number;
+  uploadedAt: string;
+  uploaderUid?: string;
+  companyId: string;
+  siteId: string;
+  reportId: string;
+  mediaType: EvidenceMediaType;
+  caption?: string;
+  locationName?: string;
   checkpointId?: string;
 }
 
@@ -123,6 +155,7 @@ export interface PatrolReport {
   checklist: ChecklistItem[];
   officerRemarks: string;
   photos: CheckpointPhoto[];
+  evidenceItems?: PatrolEvidenceItem[];
   incidents: IncidentRecord[];
   incidentCount: number;
 }

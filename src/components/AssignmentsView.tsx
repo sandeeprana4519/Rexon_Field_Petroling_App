@@ -18,10 +18,13 @@ import {
   Info,
   CalendarDays,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Assignment, AssignmentStatus, Site, FieldOfficer, OfficerShift } from '../types';
 import { DEMO_AREAS } from '../data/demoData';
+import { downloadAssignmentsCSV } from '../utils/csvExport';
+
 
 interface AssignmentsViewProps {
   assignments: Assignment[];
@@ -512,14 +515,31 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={openAssignModal}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-[#6F4E37] hover:bg-[#5A3E2B] rounded-xl transition-colors cursor-pointer shrink-0 shadow-sm"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Date-Wise Allocation</span>
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              downloadAssignmentsCSV(filteredAssignments);
+              setActionFeedback(`Exported ${filteredAssignments.length} site allocations to CSV file.`);
+              setTimeout(() => setActionFeedback(null), 3000);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-[#4B3621] bg-[#FFFFFF] hover:bg-[#F0E8DD] border border-[#E7DED2] rounded-xl transition-colors cursor-pointer shadow-2xs"
+            title="Download assignments roster as CSV"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-[#6F4E37]" />
+            <span>Export Allocations CSV</span>
+          </button>
+
+          <button
+            onClick={openAssignModal}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-[#6F4E37] hover:bg-[#5A3E2B] rounded-xl transition-colors cursor-pointer shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Date-Wise Allocation</span>
+          </button>
+        </div>
       </div>
+
 
       {actionFeedback && (
         <div className="p-3.5 bg-[#E8F5E9] border border-[#C8E6C9] rounded-xl text-xs text-[#1B5E20] flex items-center gap-2.5 animate-in fade-in shadow-2xs">

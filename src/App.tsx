@@ -19,7 +19,8 @@ import {
   DEMO_INCIDENTS,
   DEMO_ASSIGNMENTS,
   MASTER_CHECKLIST_LIBRARY,
-  INITIAL_PATROL_ZONES
+  INITIAL_PATROL_ZONES,
+  DEMO_COMPANY_CONFIG
 } from './data/demoData';
 import { loadFromStorage, saveToStorage, clearDemoStorage, STORAGE_KEYS } from './utils/storage';
 import { DemoDataBanner } from './components/DemoDataBanner';
@@ -38,6 +39,28 @@ import { SettingsView } from './components/SettingsView';
 import { ChecklistManagerModal } from './components/ChecklistManagerModal';
 import { FieldOfficerMode } from './components/FieldOfficerMode';
 import { ShieldCheck, FileSpreadsheet, AlertTriangle, ArrowUpRight, Smartphone, LogOut, Compass } from 'lucide-react';
+import { isFirebaseConfigured } from './lib/firebase';
+import { downloadPatrolReportsCSV } from './utils/csvExport';
+import {
+  DEFAULT_COMPANY_ID,
+  subscribeSites,
+  saveSiteToFirestore,
+  deleteSiteFromFirestore,
+  subscribeOfficers,
+  saveOfficerToFirestore,
+  deleteOfficerFromFirestore,
+  subscribeAssignments,
+  saveAssignmentToFirestore,
+  subscribePatrolReports,
+  submitPatrolReportToFirestore,
+  subscribeIncidents,
+  saveIncidentToFirestore,
+  subscribeZones,
+  saveZoneToFirestore,
+  deleteZoneFromFirestore,
+  saveCompanyConfigToFirestore
+} from './services/firestoreService';
+
 
 export default function App() {
   // App Mode (Owner Dashboard vs Field Officer Mode)
@@ -104,6 +127,10 @@ export default function App() {
     return INITIAL_PATROL_ZONES;
   });
 
+  const [companyConfig, setCompanyConfig] = useState(() =>
+    loadFromStorage(STORAGE_KEYS.COMPANY_CONFIG, DEMO_COMPANY_CONFIG)
+  );
+
   // Auto-sync state to localStorage whenever it changes
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.SITES, sites);
@@ -132,6 +159,41 @@ export default function App() {
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.AREAS, zones);
   }, [zones]);
+
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.COMPANY_CONFIG, companyConfig);
+  }, [companyConfig]);
+
+
+  // Live Cloud Firestore Subscriptions (Active only when real Firebase is configured)
+  useEffect(() => {
+    if (!isFirebaseConfigured) return;
+
+    const unsubs = [
+      subscribeSites(DEFAULT_COMPANY_ID, (liveSites) => {
+        if (liveSites && liveSites.length > 0) setSites(liveSites);
+      }, (err) => setGlobalFeedback(`[Firestore Error] Sites sync: ${err.message}`)),
+      subscribeOfficers(DEFAULT_COMPANY_ID, (liveOfficers) => {
+        if (liveOfficers && liveOfficers.length > 0) setOfficers(liveOfficers);
+      }),
+      subscribeAssignments(DEFAULT_COMPANY_ID, (liveAssignments) => {
+        if (liveAssignments && liveAssignments.length > 0) setAssignments(liveAssignments);
+      }),
+      subscribePatrolReports(DEFAULT_COMPANY_ID, (liveReports) => {
+        if (liveReports && liveReports.length > 0) setReports(liveReports);
+      }),
+      subscribeIncidents(DEFAULT_COMPANY_ID, (liveIncidents) => {
+        if (liveIncidents && liveIncidents.length > 0) setIncidents(liveIncidents);
+      }),
+      subscribeZones(DEFAULT_COMPANY_ID, (liveZones) => {
+        if (liveZones && liveZones.length > 0) setZones(liveZones);
+      })
+    ];
+
+    return () => {
+      unsubs.forEach((unsub) => unsub());
+    };
+  }, []);
 
   // Dashboard Filters State
   const [filters, setFilters] = useState<FilterState>({
@@ -196,7 +258,7 @@ export default function App() {
   const openIncidentsCount = incidents.filter((i) => i.status !== 'resolved').length;
 
   // 1. SITES MANAGEMENT HANDLERS
-  const handleSaveSite = (savedSite: Site) => {
+  const handleSaveSite = async (savedSite: Site) => {
     setSites((prev) => {
       const exists = prev.some((s) => s.id === savedSite.id);
       if (exists) {
@@ -204,26 +266,57 @@ export default function App() {
       }
       return [savedSite, ...prev];
     });
+
+    if (isFirebaseConfigured) {
+      try {
+        await saveSiteToFirestore(DEFAULT_COMPANY_ID, savedSite);
+        setGlobalFeedback(`Site "${savedSite.name}" synced to Cloud Firestore.`);
+        setTimeout(() => setGlobalFeedback(null), 3000);
+      } catch (err: any) {
+        setGlobalFeedback(`[Firestore Error] Could not save site: ${err?.message || 'Permission denied'}`);
+      }
+    }
   };
 
-  const handleToggleSiteStatus = (siteId: string) => {
-    setSites((prev) =>
-      prev.map((s) => {
-        if (s.id === siteId) {
-          const nextActive = !s.isActive;
-          setGlobalFeedback(
-            `Site "${s.name}" is now ${nextActive ? 'Active' : 'Deactivated'}. (Saved in demo session)`
-          );
-          setTimeout(() => setGlobalFeedback(null), 3000);
-          return { ...s, isActive: nextActive };
-        }
-        return s;
-      })
-    );
+  const handleToggleSiteStatus = async (siteId: string) => {
+    const targetSite = sites.find((s) => s.id === siteId);
+    if (!targetSite) return;
+    const updated = { ...targetSite, isActive: !targetSite.isActive };
+
+    setSites((prev) => prev.map((s) => (s.id === siteId ? updated : s)));
+    setGlobalFeedback(`Site "${updated.name}" is now ${updated.isActive ? 'Active' : 'Deactivated'}.`);
+    setTimeout(() => setGlobalFeedback(null), 3000);
+
+    if (isFirebaseConfigured) {
+      try {
+        await saveSiteToFirestore(DEFAULT_COMPANY_ID, updated);
+      } catch (err: any) {
+        setGlobalFeedback(`[Firestore Error] Status update failed: ${err?.message}`);
+      }
+    }
   };
+
+  const handleDeleteSite = async (siteId: string) => {
+    const targetSite = sites.find((s) => s.id === siteId);
+    if (!targetSite) return;
+
+    setSites((prev) => prev.filter((s) => s.id !== siteId));
+    setAssignments((prev) => prev.filter((a) => a.siteId !== siteId));
+    setGlobalFeedback(`Site "${targetSite.name}" was removed from the active monitoring database.`);
+    setTimeout(() => setGlobalFeedback(null), 3000);
+
+    if (isFirebaseConfigured) {
+      try {
+        await deleteSiteFromFirestore(DEFAULT_COMPANY_ID, siteId);
+      } catch (err: any) {
+        setGlobalFeedback(`[Firestore Error] Could not delete site: ${err?.message}`);
+      }
+    }
+  };
+
 
   // ZONE MANAGEMENT HANDLERS (REQUESTED BY USER)
-  const handleCreateZone = (newZone: PatrolZone) => {
+  const handleCreateZone = async (newZone: PatrolZone) => {
     setZones((prev) => {
       const exists = prev.some((z) => z.id === newZone.id || z.name.toLowerCase() === newZone.name.toLowerCase());
       if (exists) return prev;
@@ -231,9 +324,17 @@ export default function App() {
     });
     setGlobalFeedback(`Patrol zone "${newZone.name}" created and added to site selection list.`);
     setTimeout(() => setGlobalFeedback(null), 3000);
+
+    if (isFirebaseConfigured) {
+      try {
+        await saveZoneToFirestore(DEFAULT_COMPANY_ID, newZone);
+      } catch (err: any) {
+        setGlobalFeedback(`[Firestore Error] Could not save zone: ${err?.message}`);
+      }
+    }
   };
 
-  const handleUpdateZone = (updatedZone: PatrolZone, oldName: string) => {
+  const handleUpdateZone = async (updatedZone: PatrolZone, oldName: string) => {
     setZones((prev) => prev.map((z) => (z.id === updatedZone.id ? updatedZone : z)));
     if (oldName && oldName !== updatedZone.name) {
       setSites((prev) =>
@@ -248,9 +349,17 @@ export default function App() {
     }
     setGlobalFeedback(`Zone "${updatedZone.name}" updated successfully.`);
     setTimeout(() => setGlobalFeedback(null), 3000);
+
+    if (isFirebaseConfigured) {
+      try {
+        await saveZoneToFirestore(DEFAULT_COMPANY_ID, updatedZone);
+      } catch (err: any) {
+        setGlobalFeedback(`[Firestore Error] Could not update zone: ${err?.message}`);
+      }
+    }
   };
 
-  const handleDeleteZone = (zoneId: string, reassignToZoneName?: string) => {
+  const handleDeleteZone = async (zoneId: string, reassignToZoneName?: string) => {
     const target = zones.find((z) => z.id === zoneId);
     if (!target) return;
     setZones((prev) => prev.filter((z) => z.id !== zoneId));
@@ -264,10 +373,18 @@ export default function App() {
     }
     setGlobalFeedback(`Zone "${target.name}" removed.`);
     setTimeout(() => setGlobalFeedback(null), 3000);
+
+    if (isFirebaseConfigured) {
+      try {
+        await deleteZoneFromFirestore(DEFAULT_COMPANY_ID, zoneId);
+      } catch (err: any) {
+        setGlobalFeedback(`[Firestore Error] Could not delete zone: ${err?.message}`);
+      }
+    }
   };
 
   // 2. FIELD OFFICER MANAGEMENT HANDLERS
-  const handleSaveOfficer = (savedOfficer: FieldOfficer) => {
+  const handleSaveOfficer = async (savedOfficer: FieldOfficer) => {
     setOfficers((prev) => {
       const exists = prev.some((o) => o.id === savedOfficer.id);
       if (exists) {
@@ -275,31 +392,77 @@ export default function App() {
       }
       return [savedOfficer, ...prev];
     });
+
+    if (isFirebaseConfigured) {
+      try {
+        await saveOfficerToFirestore(DEFAULT_COMPANY_ID, savedOfficer);
+        setGlobalFeedback(`Officer "${savedOfficer.name}" saved to Cloud Firestore.`);
+        setTimeout(() => setGlobalFeedback(null), 3000);
+      } catch (err: any) {
+        setGlobalFeedback(`[Firestore Error] Could not save officer: ${err?.message}`);
+      }
+    }
   };
 
-  const handleToggleOfficerStatus = (officerId: string) => {
-    setOfficers((prev) =>
-      prev.map((o) => {
-        if (o.id === officerId) {
-          const nextActive = o.employmentStatus !== 'active';
-          setGlobalFeedback(
-            `Officer "${o.name}" status set to ${nextActive ? 'Active' : 'Deactivated'}. (Saved in demo session)`
-          );
-          setTimeout(() => setGlobalFeedback(null), 3000);
-          return {
-            ...o,
-            employmentStatus: nextActive ? 'active' : 'deactivated',
-            isActive: nextActive,
-            status: nextActive ? 'on_duty' : 'off_duty'
-          };
-        }
-        return o;
-      })
-    );
+  const handleToggleOfficerStatus = async (officerId: string) => {
+    const target = officers.find((o) => o.id === officerId);
+    if (!target) return;
+    const nextActive = target.employmentStatus !== 'active';
+    const updated: FieldOfficer = {
+      ...target,
+      employmentStatus: nextActive ? 'active' : 'deactivated',
+      isActive: nextActive,
+      status: nextActive ? 'on_duty' : 'off_duty'
+    };
+
+    setOfficers((prev) => prev.map((o) => (o.id === officerId ? updated : o)));
+    setGlobalFeedback(`Officer "${target.name}" status set to ${nextActive ? 'Active' : 'Deactivated'}.`);
+    setTimeout(() => setGlobalFeedback(null), 3000);
+
+    if (isFirebaseConfigured) {
+      try {
+        await saveOfficerToFirestore(DEFAULT_COMPANY_ID, updated);
+      } catch (err: any) {
+        setGlobalFeedback(`[Firestore Error] Could not update officer status: ${err?.message}`);
+      }
+    }
   };
+
+  const handleDeleteOfficer = async (officerId: string) => {
+    const target = officers.find((o) => o.id === officerId);
+    if (!target) return;
+
+    setOfficers((prev) => prev.filter((o) => o.id !== officerId));
+    setAssignments((prev) => prev.filter((a) => a.officerId !== officerId));
+    setGlobalFeedback(`Officer "${target.name}" (${target.badgeNumber}) removed from active roster.`);
+    setTimeout(() => setGlobalFeedback(null), 3000);
+
+    if (isFirebaseConfigured) {
+      try {
+        await deleteOfficerFromFirestore(DEFAULT_COMPANY_ID, officerId);
+      } catch (err: any) {
+        setGlobalFeedback(`[Firestore Error] Could not delete officer: ${err?.message}`);
+      }
+    }
+  };
+
+  const handleSaveCompanyConfig = async (newConfig: typeof DEMO_COMPANY_CONFIG) => {
+    setCompanyConfig(newConfig);
+    setGlobalFeedback(`कंपनी सेटिंग्स "${newConfig.companyName}" सफलतापूर्वक सहेजी गईं (Company profile updated).`);
+    setTimeout(() => setGlobalFeedback(null), 3500);
+
+    if (isFirebaseConfigured) {
+      try {
+        await saveCompanyConfigToFirestore(DEFAULT_COMPANY_ID, newConfig);
+      } catch (err: any) {
+        setGlobalFeedback(`[Firestore Error] Could not save company settings: ${err?.message}`);
+      }
+    }
+  };
+
 
   // 3. ASSIGNMENT MANAGEMENT HANDLERS
-  const handleAddAssignments = (newAssignmentsList: Assignment[]) => {
+  const handleAddAssignments = async (newAssignmentsList: Assignment[]) => {
     setAssignments((prev) => [...newAssignmentsList, ...prev]);
 
     if (newAssignmentsList.length > 0) {
@@ -315,18 +478,50 @@ export default function App() {
         })
       );
     }
+
+    if (isFirebaseConfigured) {
+      try {
+        for (const asg of newAssignmentsList) {
+          await saveAssignmentToFirestore(DEFAULT_COMPANY_ID, asg);
+        }
+        setGlobalFeedback(`${newAssignmentsList.length} site assignment(s) saved to Cloud Firestore.`);
+        setTimeout(() => setGlobalFeedback(null), 3000);
+      } catch (err: any) {
+        setGlobalFeedback(`[Firestore Error] Could not save assignments: ${err?.message}`);
+      }
+    }
   };
 
-  const handleUpdateAssignment = (updatedAsg: Assignment) => {
+  const handleUpdateAssignment = async (updatedAsg: Assignment) => {
     setAssignments((prev) =>
       prev.map((asg) => (asg.id === updatedAsg.id ? updatedAsg : asg))
     );
+
+    if (isFirebaseConfigured) {
+      try {
+        await saveAssignmentToFirestore(DEFAULT_COMPANY_ID, updatedAsg);
+      } catch (err: any) {
+        setGlobalFeedback(`[Firestore Error] Could not update assignment: ${err?.message}`);
+      }
+    }
   };
 
-  const handleCancelAssignment = (assignmentId: string) => {
+  const handleCancelAssignment = async (assignmentId: string) => {
+    const asg = assignments.find((a) => a.id === assignmentId);
+    if (!asg) return;
+    const updated = { ...asg, status: 'cancelled' as const };
+
     setAssignments((prev) =>
-      prev.map((asg) => (asg.id === assignmentId ? { ...asg, status: 'cancelled' } : asg))
+      prev.map((a) => (a.id === assignmentId ? updated : a))
     );
+
+    if (isFirebaseConfigured) {
+      try {
+        await saveAssignmentToFirestore(DEFAULT_COMPANY_ID, updated);
+      } catch (err: any) {
+        setGlobalFeedback(`[Firestore Error] Could not cancel assignment: ${err?.message}`);
+      }
+    }
   };
 
   // 4. CHECKLIST MANAGEMENT HANDLER
@@ -335,16 +530,39 @@ export default function App() {
   };
 
   // 5. INCIDENT STATUS HANDLER
-  const handleUpdateIncidentStatus = (incidentId: string, newStatus: IncidentStatus) => {
+  const handleUpdateIncidentStatus = async (incidentId: string, newStatus: IncidentStatus) => {
+    const inc = incidents.find((i) => i.id === incidentId);
+    if (!inc) return;
+    const updated = { ...inc, status: newStatus };
+
     setIncidents((prev) =>
-      prev.map((inc) => (inc.id === incidentId ? { ...inc, status: newStatus } : inc))
+      prev.map((i) => (i.id === incidentId ? updated : i))
     );
+
+    if (isFirebaseConfigured) {
+      try {
+        await saveIncidentToFirestore(DEFAULT_COMPANY_ID, updated);
+      } catch (err: any) {
+        setGlobalFeedback(`[Firestore Error] Could not update incident: ${err?.message}`);
+      }
+    }
   };
 
   // 6. MODULE 4: SUBMIT PATROL REPORT FROM FIELD OFFICER MODE
-  const handleSubmitPatrolReport = (newReport: PatrolReport, newIncident?: IncidentRecord) => {
+  const handleSubmitPatrolReport = async (
+    newReport: PatrolReport,
+    newIncidents?: IncidentRecord[] | IncidentRecord
+  ) => {
     // 1. Add to reports list
     setReports((prev) => [newReport, ...prev]);
+
+    const incidentsList: IncidentRecord[] = Array.isArray(newIncidents)
+      ? newIncidents
+      : newIncidents
+      ? [newIncidents]
+      : (newReport.incidents || []);
+
+    const hasIncidents = incidentsList.length > 0;
 
     // 2. Update site progress & timestamp
     setSites((prev) =>
@@ -354,8 +572,8 @@ export default function App() {
             ...s,
             completedPatrolsToday: s.completedPatrolsToday + 1,
             lastPatrolTime: newReport.completedAt || newReport.actualCheckInTime || 'Completed',
-            incidentCount: newIncident ? s.incidentCount + 1 : s.incidentCount,
-            securityStatus: newIncident ? 'incident_reported' : s.securityStatus
+            incidentCount: s.incidentCount + incidentsList.length,
+            securityStatus: hasIncidents ? 'incident_reported' : s.securityStatus
           };
         }
         return s;
@@ -391,15 +609,27 @@ export default function App() {
       })
     );
 
-    // 5. If incident was reported during patrol, add to incidents list
-    if (newIncident) {
-      setIncidents((prev) => [newIncident, ...prev]);
+    // 5. If incident was reported during patrol, add all to incidents list
+    if (incidentsList.length > 0) {
+      setIncidents((prev) => [...incidentsList, ...prev]);
     }
 
-    setGlobalFeedback(
-      `Patrol report ${newReport.reportCode} (${newReport.siteName}) successfully received from Officer ${newReport.officerName} and recorded in live operations log.`
-    );
-    setTimeout(() => setGlobalFeedback(null), 4000);
+    // 6. Cloud Firestore persistent submission
+    if (isFirebaseConfigured) {
+      try {
+        await submitPatrolReportToFirestore(DEFAULT_COMPANY_ID, newReport, incidentsList);
+        setGlobalFeedback(`Patrol report ${newReport.reportCode} saved to Cloud Firestore (${incidentsList.length > 0 ? `${incidentsList.length} incident(s) registered` : 'All clear'}).`);
+        setTimeout(() => setGlobalFeedback(null), 3500);
+      } catch (err: any) {
+        console.error('Firestore submission error:', err);
+        setGlobalFeedback(`[Firestore Error] Could not save patrol report: ${err?.message || 'Permission denied'}`);
+      }
+    } else {
+      setGlobalFeedback(
+        `Patrol report ${newReport.reportCode} (${newReport.siteName}) successfully received from Officer ${newReport.officerName} and recorded in live operations log.`
+      );
+      setTimeout(() => setGlobalFeedback(null), 4000);
+    }
   };
 
   // Switch to Owner Dashboard and open specific report
@@ -422,6 +652,7 @@ export default function App() {
     setZones(INITIAL_PATROL_ZONES);
     setReports(DEMO_PATROL_REPORTS);
     setIncidents(DEMO_INCIDENTS);
+    setCompanyConfig(DEMO_COMPANY_CONFIG);
     setGlobalFeedback('All demo records reset to initial factory demo state.');
     setTimeout(() => setGlobalFeedback(null), 3000);
   };
@@ -436,11 +667,13 @@ export default function App() {
   };
 
   const handleExportCSV = () => {
-    setGlobalFeedback('Exporting daily patrol logs & GPS audit sheet to CSV (Demo)...');
+    downloadPatrolReportsCSV(filteredReports);
+    setGlobalFeedback(`Exported ${filteredReports.length} patrol report log(s) to CSV file.`);
     setTimeout(() => {
       setGlobalFeedback(null);
-    }, 3000);
+    }, 3500);
   };
+
 
   // --- RENDER FIELD OFFICER MODE IF ACTIVE ---
   if (appMode === 'field_officer') {
@@ -474,7 +707,10 @@ export default function App() {
         onMobileMenuToggle={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         onRefreshData={handleRefreshData}
         isRefreshing={isRefreshing}
+        companyName={companyConfig.companyName}
+        ownerName={companyConfig.ownerName}
       />
+
 
       {/* 3. Main Workspace Layout */}
       <div className="flex-1 flex w-full">
@@ -661,6 +897,7 @@ export default function App() {
               onCreateZone={handleCreateZone}
               onSaveSite={handleSaveSite}
               onToggleSiteStatus={handleToggleSiteStatus}
+              onDeleteSite={handleDeleteSite}
               onSelectSiteReport={(rep) => setSelectedReport(rep)}
               onOpenChecklistManager={() => setIsChecklistManagerOpen(true)}
               onOpenZonesManager={() => setCurrentTab('zones')}
@@ -690,14 +927,22 @@ export default function App() {
               sites={sites}
               reports={reports}
               assignments={assignments}
+              zones={zones}
               areas={zones.map((z) => z.name)}
               onSaveOfficer={handleSaveOfficer}
               onToggleOfficerStatus={handleToggleOfficerStatus}
+              onDeleteOfficer={handleDeleteOfficer}
+
               onFilterByOfficer={(offId) => {
                 handleFilterChange('officerId', offId);
                 setCurrentTab('dashboard');
               }}
               onSelectReport={(rep) => setSelectedReport(rep)}
+              onLaunchOfficerApp={(officer) => {
+                setSelectedOfficerPersonaId(officer.id);
+                saveToStorage(STORAGE_KEYS.OFFICER_AUTH, officer.id);
+                setAppMode('field_officer');
+              }}
             />
           )}
 
@@ -764,10 +1009,20 @@ export default function App() {
           {/* TAB 7: SETTINGS */}
           {currentTab === 'settings' && (
             <SettingsView
+              sites={sites}
+              officers={officers}
+              assignments={assignments}
+              reports={reports}
+              incidents={incidents}
+              zones={zones}
+              masterChecklists={masterChecklists}
+              companyConfig={companyConfig}
+              onSaveCompanyConfig={handleSaveCompanyConfig}
               onOpenMobilePreview={() => setAppMode('field_officer')}
               onResetToDemoDefaults={handleResetToDemoDefaults}
             />
           )}
+
         </main>
       </div>
 

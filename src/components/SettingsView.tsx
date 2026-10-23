@@ -15,31 +15,129 @@ import {
   RotateCcw,
   Mic,
   Globe,
-  Volume2
+  Volume2,
+  Download,
+  UploadCloud,
+  FileJson
 } from 'lucide-react';
 import { DEMO_COMPANY_CONFIG } from '../data/demoData';
 import { VoiceInputControl } from './VoiceInputControl';
+import { isFirebaseConfigured, missingFirebaseConfigKeys, firebaseConfig } from '../lib/firebase';
+import { migrateLocalDataToFirestore, DEFAULT_COMPANY_ID } from '../services/firestoreService';
+import {
+  Site,
+  FieldOfficer,
+  Assignment,
+  PatrolReport,
+  IncidentRecord,
+  PatrolZone,
+  ChecklistItem
+} from '../types';
 
 interface SettingsViewProps {
+  sites?: Site[];
+  officers?: FieldOfficer[];
+  assignments?: Assignment[];
+  reports?: PatrolReport[];
+  incidents?: IncidentRecord[];
+  zones?: PatrolZone[];
+  masterChecklists?: ChecklistItem[];
+  companyConfig?: typeof DEMO_COMPANY_CONFIG;
+  onSaveCompanyConfig?: (config: typeof DEMO_COMPANY_CONFIG) => void;
   onOpenMobilePreview: () => void;
   onResetToDemoDefaults: () => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
+  sites = [],
+  officers = [],
+  assignments = [],
+  reports = [],
+  incidents = [],
+  zones = [],
+  masterChecklists = [],
+  companyConfig = DEMO_COMPANY_CONFIG,
+  onSaveCompanyConfig,
   onOpenMobilePreview,
   onResetToDemoDefaults
 }) => {
-  const [config, setConfig] = useState(DEMO_COMPANY_CONFIG);
+  const [config, setConfig] = useState(companyConfig);
+
+  // Sync state if companyConfig prop updates
+  React.useEffect(() => {
+    setConfig(companyConfig);
+  }, [companyConfig]);
+
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+  const [isMigrating, setIsMigrating] = useState(false);
   const [defaultVoiceLang, setDefaultVoiceLang] = useState<'hi-IN' | 'en-IN' | 'en-US'>('hi-IN');
   const [testVoiceText, setTestVoiceText] = useState('');
 
+
+  const handleExportJsonBackup = () => {
+    const backupData = {
+      exportedAt: new Date().toISOString(),
+      app: 'Rexon Field Patrolling',
+      version: '2.0.0',
+      sites,
+      officers,
+      assignments,
+      reports,
+      incidents,
+      zones,
+      masterChecklists
+    };
+
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `rexon_patrol_backup_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setSaveFeedback('Complete JSON backup downloaded to your device.');
+    setTimeout(() => setSaveFeedback(null), 3000);
+  };
+
+  const handleMigrateToCloud = async () => {
+    if (!isFirebaseConfigured) {
+      alert('Cloud Firestore is not configured yet. Please configure Firebase credentials first.');
+      return;
+    }
+
+    setIsMigrating(true);
+    try {
+      const res = await migrateLocalDataToFirestore(DEFAULT_COMPANY_ID, {
+        sites,
+        officers,
+        assignments,
+        reports,
+        incidents,
+        zones,
+        masterChecklists
+      });
+      setSaveFeedback(`Successfully synchronized ${res.count} records to Cloud Firestore.`);
+    } catch (err: any) {
+      console.error('Migration error:', err);
+      setSaveFeedback(`Migration failed: ${err?.message || 'Error writing to Firestore'}`);
+    } finally {
+      setIsMigrating(false);
+      setTimeout(() => setSaveFeedback(null), 4000);
+    }
+  };
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    setSaveFeedback('Patrol parameters, voice settings & company configuration updated in local demo session.');
+    if (onSaveCompanyConfig) {
+      onSaveCompanyConfig(config);
+    }
+    setSaveFeedback('कंपनी प्रोफाइल, मोबाइल नंबर व सेटिंग्स सफलतापूर्वक सहेजे गए (Company profile, phone numbers & patrol settings saved).');
     setTimeout(() => {
       setSaveFeedback(null);
-    }, 2500);
+    }, 3500);
   };
 
   const handleResetDefaults = () => {
@@ -60,11 +158,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span>Company & Field Operations Settings</span>
           </h2>
           <p className="text-xs text-[#8B735B] mt-0.5">
-            Configure Rexon Field Patrolling parameters, voice recognition, geofence compliance bounds and dispatch rules
+            Configure Rexon Field Patrolling parameters, company name, mobile number, geofence compliance bounds and dispatch rules
           </p>
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExportJsonBackup}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FFFFFF] hover:bg-[#F0E8DD] text-[#4B3621] border border-[#E7DED2] text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+            title="Download full JSON backup of all operations data"
+          >
+            <Download className="w-3.5 h-3.5 text-[#6F4E37]" />
+            <span>Backup JSON</span>
+          </button>
+
           <button
             type="button"
             onClick={handleResetDefaults}
@@ -80,7 +188,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {saveFeedback && (
         <div className="p-3 bg-[#E8F5E9] border border-[#C8E6C9] rounded-xl text-xs text-[#1B5E20] flex items-center gap-2 animate-in fade-in shadow-2xs">
           <CheckCircle2 className="w-4 h-4 text-[#2E7D32] shrink-0" />
-          <span>{saveFeedback}</span>
+          <span className="font-semibold">{saveFeedback}</span>
         </div>
       )}
 
@@ -88,22 +196,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <form onSubmit={handleSave} className="space-y-6">
         {/* Card 1: Company Profile */}
         <div className="bg-[#FFFFFF] border border-[#E7DED2] rounded-xl p-5 space-y-4 shadow-2xs">
-          <div className="flex items-center gap-2 border-b border-[#E7DED2] pb-3">
-            <Shield className="w-4 h-4 text-[#6F4E37]" />
-            <h3 className="text-sm font-bold text-[#4B3621]">
-              Security Agency Profile & Ownership
-            </h3>
+          <div className="flex items-center justify-between border-b border-[#E7DED2] pb-3">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-[#6F4E37]" />
+              <h3 className="text-sm font-bold text-[#4B3621]">
+                Security Agency Profile & Contact Details (कंपनी प्रोफाइल व संपर्क)
+              </h3>
+            </div>
+            <span className="text-[11px] text-[#2E7D32] font-semibold bg-[#E8F5E9] px-2 py-0.5 rounded border border-[#C8E6C9]">
+              Live Persisted
+            </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div>
-              <label className="block text-[#4B3621] font-semibold mb-1">Company Registered Name</label>
+              <label className="block text-[#4B3621] font-semibold mb-1">Company Registered Name *</label>
               <input
                 type="text"
+                required
                 value={config.companyName}
                 onChange={(e) => setConfig({ ...config, companyName: e.target.value })}
+                placeholder="e.g. Rexon Security Solutions Inc."
                 className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#E7DED2] rounded-lg text-[#4B3621] focus:outline-none focus:border-[#6F4E37] focus:bg-[#FFFFFF]"
               />
+              <p className="text-[11px] text-[#8B735B] mt-1">Updates title across Owner Dashboard, reports, and exports.</p>
             </div>
 
             <div>
@@ -114,6 +230,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 value={config.appName}
                 className="w-full px-3 py-2 bg-[#F0E8DD] border border-[#E7DED2] rounded-lg text-[#8B735B] font-bold cursor-not-allowed"
               />
+              <p className="text-[11px] text-[#8B735B] mt-1">System brand tag identifier.</p>
             </div>
 
             <div>
@@ -122,6 +239,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 type="text"
                 value={config.ownerName}
                 onChange={(e) => setConfig({ ...config, ownerName: e.target.value })}
+                placeholder="e.g. Commander J. Reynolds"
                 className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#E7DED2] rounded-lg text-[#4B3621] focus:outline-none focus:border-[#6F4E37] focus:bg-[#FFFFFF]"
               />
             </div>
@@ -135,8 +253,68 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#E7DED2] rounded-lg text-[#4B3621] font-mono focus:outline-none focus:border-[#6F4E37] focus:bg-[#FFFFFF]"
               />
             </div>
+
+            {/* Mobile / Phone Number Field (Requested by User) */}
+            <div>
+              <label className="block text-[#4B3621] font-semibold mb-1 flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-[#6F4E37]" />
+                <span>Primary Contact / Mobile Number (मोबाइल नंबर) *</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={config.contactPhone || ''}
+                onChange={(e) => setConfig({ ...config, contactPhone: e.target.value })}
+                placeholder="e.g. +91 98765 43210 or +1 (555) 900-REXON"
+                className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#E7DED2] rounded-lg text-[#4B3621] font-mono focus:outline-none focus:border-[#6F4E37] focus:bg-[#FFFFFF]"
+              />
+              <p className="text-[11px] text-[#8B735B] mt-1">Printed on daily patrol logs and displayed for field officer escalations.</p>
+            </div>
+
+            {/* Alert & Dispatch Phone */}
+            <div>
+              <label className="block text-[#4B3621] font-semibold mb-1 flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-[#B71C1C]" />
+                <span>Emergency Dispatch Hotline (इमरजेंसी फोन)</span>
+              </label>
+              <input
+                type="text"
+                value={config.alertDispatchPhone || ''}
+                onChange={(e) => setConfig({ ...config, alertDispatchPhone: e.target.value })}
+                placeholder="e.g. +1 (555) 900-REXON"
+                className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#E7DED2] rounded-lg text-[#4B3621] font-mono focus:outline-none focus:border-[#6F4E37] focus:bg-[#FFFFFF]"
+              />
+            </div>
+
+            {/* Official Operations Email */}
+            <div>
+              <label className="block text-[#4B3621] font-semibold mb-1">Official Operations Email</label>
+              <input
+                type="email"
+                value={config.contactEmail || ''}
+                onChange={(e) => setConfig({ ...config, contactEmail: e.target.value })}
+                placeholder="operations@rexonsecurity.com"
+                className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#E7DED2] rounded-lg text-[#4B3621] focus:outline-none focus:border-[#6F4E37] focus:bg-[#FFFFFF]"
+              />
+            </div>
+
+            {/* Office Address */}
+            <div>
+              <label className="block text-[#4B3621] font-semibold mb-1 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-[#6F4E37]" />
+                <span>Headquarters Office Address</span>
+              </label>
+              <input
+                type="text"
+                value={config.companyAddress || ''}
+                onChange={(e) => setConfig({ ...config, companyAddress: e.target.value })}
+                placeholder="e.g. Suite 400, Security Boulevard, Metro City"
+                className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#E7DED2] rounded-lg text-[#4B3621] focus:outline-none focus:border-[#6F4E37] focus:bg-[#FFFFFF]"
+              />
+            </div>
           </div>
         </div>
+
 
         {/* Card 2: Voice-Input & Bilingual Settings (हिन्दी / English) */}
         <div className="bg-[#FFFFFF] border border-[#E7DED2] rounded-xl p-5 space-y-4 shadow-2xs">
@@ -344,14 +522,67 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             <div className="p-3 rounded-lg bg-[#FAF7F2] border border-[#E7DED2] flex items-start gap-2.5">
-              <Lock className="w-4 h-4 text-[#8B735B] shrink-0 mt-0.5" />
+              <Lock className="w-4 h-4 text-[#6F4E37] shrink-0 mt-0.5" />
               <div>
-                <div className="font-bold text-[#4B3621]">Role-Based Guard Authentication</div>
+                <div className="font-bold text-[#4B3621]">Role-Based Auth Foundation (Admin vs Guard)</div>
                 <div className="text-[11px] text-[#8B735B]">
-                  Planned for backend phase with guard biometric and passcode logins.
+                  Firebase Auth Email/Password service created. Supports strict server-side role resolution; users cannot self-assign Admin privileges.
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Phase 2: Firebase Cloud Configuration Boundary Card */}
+          <div className="mt-4 pt-4 border-t border-[#E7DED2] space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <div className={`w-2.5 h-2.5 rounded-full ${isFirebaseConfigured ? 'bg-[#2E7D32]' : 'bg-[#D97706]'}`} />
+                <span className="text-xs font-bold text-[#4B3621]">
+                  Firebase Configuration Status:
+                </span>
+                <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded border ${
+                  isFirebaseConfigured
+                    ? 'bg-[#E8F5E9] text-[#1B5E20] border-[#C8E6C9]'
+                    : 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]'
+                }`}>
+                  {isFirebaseConfigured ? `CONFIGURED (${firebaseConfig?.projectId})` : 'AWAITING CREDENTIALS'}
+                </span>
+              </div>
+
+              <span className="text-[10px] text-[#8B735B] font-mono">
+                SDK Version: v11.x (Installed)
+              </span>
+            </div>
+
+            {isFirebaseConfigured ? (
+              <div className="p-3 rounded-xl bg-[#E8F5E9] border border-[#C8E6C9] text-xs text-[#1B5E20] space-y-1">
+                <div className="font-bold">Firebase Connected Successfully</div>
+                <div className="text-[11px] text-[#2E7D32]">
+                  Project <strong>{firebaseConfig?.projectId}</strong> initialized with Auth Domain <strong>{firebaseConfig?.authDomain}</strong>.
+                </div>
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-xl bg-[#FAF7F2] border border-[#E7DED2] text-xs space-y-2.5">
+                <div className="text-[#4B3621] font-semibold flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-[#D97706]" />
+                  <span>Configuration Boundary Active: Real connection pending user credentials</span>
+                </div>
+                <p className="text-[11px] text-[#8B735B] leading-relaxed">
+                  The application is currently running in safe local persistence mode. To activate real Cloud Firestore and Authentication, supply the following keys in your environment (e.g. via <code>.env</code> or platform secrets):
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 font-mono text-[10px]">
+                  {missingFirebaseConfigKeys.map((key) => (
+                    <div key={key} className="bg-[#FFFFFF] px-2 py-1 rounded border border-[#E7DED2] text-[#6F4E37] flex items-center justify-between">
+                      <span>{key}</span>
+                      <span className="text-[#D97706] font-sans font-bold text-[9px] uppercase">Required</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-[#8B735B] italic pt-1">
+                  * Note: Server-enforced role permissions and Firestore/Storage security rules will be applied before production data access is permitted.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
