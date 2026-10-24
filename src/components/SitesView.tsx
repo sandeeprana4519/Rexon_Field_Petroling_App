@@ -21,12 +21,14 @@ import {
   Library,
   Layers,
   Edit2,
-  Calendar
+  Calendar,
+  MessageSquare
 } from 'lucide-react';
-import { Site, SiteType, PatrolReport, ChecklistItem, PatrolZone, Assignment, FieldOfficer } from '../types';
+import { Site, SiteType, PatrolReport, ChecklistItem, PatrolZone, Assignment, FieldOfficer, SiteNotificationConfig } from '../types';
 import { DEMO_AREAS } from '../data/demoData';
 import { SiteChecklistModal } from './SiteChecklistModal';
 import { SiteReportsDownloadModal } from './SiteReportsDownloadModal';
+import { SiteNotificationModal } from './SiteNotificationModal';
 
 interface SitesViewProps {
   sites: Site[];
@@ -85,6 +87,21 @@ export const SitesView: React.FC<SitesViewProps> = ({
 
   // Dedicated Site Reports Download Modal State (Daily, Weekly, Monthly)
   const [selectedSiteForDownload, setSelectedSiteForDownload] = useState<Site | null>(null);
+
+  // Dedicated Site WhatsApp Notification Modal State
+  const [selectedSiteForWhatsApp, setSelectedSiteForWhatsApp] = useState<Site | null>(null);
+
+  const handleSaveNotificationConfig = (siteId: string, notifConfig: SiteNotificationConfig) => {
+    const target = sites.find((s) => s.id === siteId);
+    if (!target) return;
+    const updated: Site = {
+      ...target,
+      whatsappNotifications: notifConfig
+    };
+    onSaveSite(updated);
+    setActionFeedback(`WhatsApp alert settings for "${target.name}" updated successfully.`);
+    setTimeout(() => setActionFeedback(null), 3000);
+  };
 
   // Quick Add Zone Modal State (right inside Create Site modal)
   const [isQuickZoneModalOpen, setIsQuickZoneModalOpen] = useState(false);
@@ -695,6 +712,21 @@ export const SitesView: React.FC<SitesViewProps> = ({
                         <ListChecks className="w-3.5 h-3.5" />
                         <span>Checklist ({site.checklistTemplates?.length || masterChecklists.length})</span>
                       </button>
+
+                      {/* SITE AUTOMATED WHATSAPP ALERTS BUTTON */}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSiteForWhatsApp(site)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded border transition-colors cursor-pointer shadow-2xs ${
+                          site.whatsappNotifications?.enabled
+                            ? 'bg-[#E8F5E9] hover:bg-[#C8E6C9] text-[#1B5E20] border-[#A5D6A7]'
+                            : 'bg-[#FAF7F2] hover:bg-[#F0E8DD] text-[#4B3621] border-[#E7DED2]'
+                        }`}
+                        title="Configure automated WhatsApp notifications for Factory Owner & HR"
+                      >
+                        <MessageSquare className={`w-3.5 h-3.5 ${site.whatsappNotifications?.enabled ? 'text-[#25D366]' : 'text-[#8B735B]'}`} />
+                        <span>WhatsApp ({site.whatsappNotifications?.enabled ? `${site.whatsappNotifications.recipients?.filter(r => r.isActive).length || 0} Active` : 'Off'})</span>
+                      </button>
                     </div>
 
                     {siteReport ? (
@@ -1297,6 +1329,16 @@ export const SitesView: React.FC<SitesViewProps> = ({
           officers={officers}
           onClose={() => setSelectedSiteForDownload(null)}
           onSelectReport={onSelectSiteReport}
+        />
+      )}
+
+      {/* DEDICATED SITE WHATSAPP NOTIFICATION MODAL */}
+      {selectedSiteForWhatsApp && (
+        <SiteNotificationModal
+          site={selectedSiteForWhatsApp}
+          isOpen={!!selectedSiteForWhatsApp}
+          onClose={() => setSelectedSiteForWhatsApp(null)}
+          onSaveNotificationConfig={handleSaveNotificationConfig}
         />
       )}
     </div>

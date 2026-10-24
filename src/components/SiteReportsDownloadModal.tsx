@@ -28,6 +28,7 @@ import {
   Video
 } from 'lucide-react';
 import { Site, PatrolReport, Assignment, FieldOfficer, IncidentRecord } from '../types';
+import { getTodayDateString, getOffsetDateString } from '../utils/dateUtils';
 
 export type SiteTimeframeMode = 'daily' | 'weekly' | 'monthly' | 'custom';
 
@@ -50,9 +51,9 @@ export const SiteReportsDownloadModal: React.FC<SiteReportsDownloadModalProps> =
 }) => {
   // Timeframe and date state
   const [timeframeMode, setTimeframeMode] = useState<SiteTimeframeMode>('daily');
-  const [selectedDate, setSelectedDate] = useState('2026-10-20');
-  const [customStartDate, setCustomStartDate] = useState('2026-10-14');
-  const [customEndDate, setCustomEndDate] = useState('2026-10-20');
+  const [selectedDate, setSelectedDate] = useState(() => getTodayDateString());
+  const [customStartDate, setCustomStartDate] = useState(() => getOffsetDateString(-6));
+  const [customEndDate, setCustomEndDate] = useState(() => getTodayDateString());
 
   // UI state
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
@@ -78,7 +79,7 @@ export const SiteReportsDownloadModal: React.FC<SiteReportsDownloadModalProps> =
   };
 
   const handleSetToday = () => {
-    setSelectedDate('2026-10-20');
+    setSelectedDate(getTodayDateString());
   };
 
   // Compute effective date range
@@ -130,7 +131,7 @@ export const SiteReportsDownloadModal: React.FC<SiteReportsDownloadModalProps> =
   const siteReportsInRange = useMemo(() => {
     return reports.filter((rep) => {
       if (rep.siteId !== site.id && rep.siteName !== site.name) return false;
-      const repDate = rep.scheduledDate || '2026-10-20';
+      const repDate = rep.scheduledDate || getTodayDateString();
       return repDate >= effectiveStartDate && repDate <= effectiveEndDate;
     });
   }, [reports, site.id, site.name, effectiveStartDate, effectiveEndDate]);

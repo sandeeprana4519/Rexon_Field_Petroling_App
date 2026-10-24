@@ -22,7 +22,8 @@ import {
   INITIAL_PATROL_ZONES,
   DEMO_COMPANY_CONFIG
 } from './data/demoData';
-import { loadFromStorage, saveToStorage, clearDemoStorage, STORAGE_KEYS } from './utils/storage';
+import { loadFromStorage, saveToStorage, clearDemoStorage, STORAGE_KEYS, AdminCredentials, DEFAULT_ADMIN_CREDENTIALS } from './utils/storage';
+import { getTodayDateString, getYesterdayDateString, getOffsetDateString } from './utils/dateUtils';
 import { DemoDataBanner } from './components/DemoDataBanner';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -38,9 +39,11 @@ import { AssignmentsView } from './components/AssignmentsView';
 import { SettingsView } from './components/SettingsView';
 import { ChecklistManagerModal } from './components/ChecklistManagerModal';
 import { FieldOfficerMode } from './components/FieldOfficerMode';
+import { AdminLoginView } from './components/AdminLoginView';
 import { ShieldCheck, FileSpreadsheet, AlertTriangle, ArrowUpRight, Smartphone, LogOut, Compass } from 'lucide-react';
 import { isFirebaseConfigured } from './lib/firebase';
 import { downloadPatrolReportsCSV } from './utils/csvExport';
+import { dispatchPatrolReportNotification } from './services/whatsappNotificationService';
 import {
   DEFAULT_COMPANY_ID,
   subscribeSites,
@@ -67,6 +70,35 @@ export default function App() {
   const [appMode, setAppMode] = useState<AppMode>('owner_dashboard');
   const [selectedOfficerPersonaId, setSelectedOfficerPersonaId] = useState<string>('off-sandeep');
 
+  // Admin Authentication State
+  const [adminCredentials, setAdminCredentials] = useState<AdminCredentials>(() =>
+    loadFromStorage(STORAGE_KEYS.ADMIN_CREDENTIALS, DEFAULT_ADMIN_CREDENTIALS)
+  );
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    return loadFromStorage<boolean>(STORAGE_KEYS.ADMIN_AUTH, false);
+  });
+
+  const handleAdminLoginSuccess = () => {
+    setIsAdminAuthenticated(true);
+    saveToStorage(STORAGE_KEYS.ADMIN_AUTH, true);
+    setGlobalFeedback('एडमिन ऑपरेशन्स पोर्टल में आपका स्वागत है (Logged in to Admin Operations Console).');
+    setTimeout(() => setGlobalFeedback(null), 3000);
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdminAuthenticated(false);
+    saveToStorage(STORAGE_KEYS.ADMIN_AUTH, false);
+    setGlobalFeedback('एडमिन पोर्टल से सफलतापूर्वक लॉग आउट हुए (Logged out of Admin Portal).');
+    setTimeout(() => setGlobalFeedback(null), 3000);
+  };
+
+  const handleUpdateAdminCredentials = (newCreds: AdminCredentials) => {
+    setAdminCredentials(newCreds);
+    saveToStorage(STORAGE_KEYS.ADMIN_CREDENTIALS, newCreds);
+    setGlobalFeedback('एडमिन आईडी और पासवर्ड सफलतापूर्वक अपडेट हो गए (Admin credentials updated).');
+    setTimeout(() => setGlobalFeedback(null), 3500);
+  };
+
   // Navigation & UI state
   const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -84,10 +116,14 @@ export default function App() {
   );
   const [assignments, setAssignments] = useState<Assignment[]>(() => {
     const loaded = loadFromStorage(STORAGE_KEYS.ASSIGNMENTS, DEMO_ASSIGNMENTS);
+    const todayStr = getTodayDateString();
+    const defaultEnd = getOffsetDateString(6);
     return loaded.map((a) => {
       const site = DEMO_SITES.find((s) => s.id === a.siteId);
-      const start = a.startDate || a.date || '2026-10-20';
-      const end = a.endDate || (a.id.includes('ami') ? '2026-10-24' : '2026-10-26');
+      // If demo data was anchored to 2026-10-20, advance seamlessly to today
+      const rawStart = a.startDate || a.date;
+      const start = (rawStart && rawStart !== '2026-10-20') ? rawStart : todayStr;
+      const end = (a.endDate && !a.endDate.startsWith('2026-10-2')) ? a.endDate : defaultEnd;
       const startD = new Date(start).getTime();
       const endD = new Date(end).getTime();
       const diff = Math.round((endD - startD) / (1000 * 60 * 60 * 24)) + 1;
@@ -105,12 +141,34 @@ export default function App() {
   const [masterChecklists, setMasterChecklists] = useState<ChecklistItem[]>(() =>
     loadFromStorage(STORAGE_KEYS.CHECKLISTS, MASTER_CHECKLIST_LIBRARY)
   );
-  const [reports, setReports] = useState<PatrolReport[]>(() =>
-    loadFromStorage(STORAGE_KEYS.REPORTS, DEMO_PATROL_REPORTS)
-  );
-  const [incidents, setIncidents] = useState<IncidentRecord[]>(() =>
-    loadFromStorage(STORAGE_KEYS.INCIDENTS, DEMO_INCIDENTS)
-  );
+  const [reports, setReports] = useState<PatrolReport[]>(() => {
+    const loaded = loadFromStorage(STORAGE_KEYS.REPORTS, DEMO_PATROL_REPORTS);
+    const todayStr = getTodayDateString();
+    const yesterdayStr = getYesterdayDateString();
+    // Refresh static demo date 2026-10-20 to live today / yesterday
+    return loaded.map((r, idx) => {
+      if (r.scheduledDate === '2026-10-20') {
+        return {
+          ...r,
+          scheduledDate: idx < 3 ? todayStr : yesterdayStr
+        };
+      }
+      return r;
+    });
+  });
+  const [incidents, setIncidents] = useState<IncidentRecord[]>(() => {
+    const loaded = loadFromStorage(STORAGE_KEYS.INCIDENTS, DEMO_INCIDENTS);
+    const todayStr = getTodayDateString();
+    return loaded.map((inc) => {
+      if (inc.reportedAt && inc.reportedAt.includes('2026-10-20')) {
+        return {
+          ...inc,
+          reportedAt: inc.reportedAt.replace('2026-10-20', todayStr)
+        };
+      }
+      return inc;
+    });
+  });
   const [zones, setZones] = useState<PatrolZone[]>(() => {
     const stored = loadFromStorage<any>(STORAGE_KEYS.AREAS, INITIAL_PATROL_ZONES);
     if (Array.isArray(stored) && stored.length > 0) {
@@ -222,9 +280,14 @@ export default function App() {
 
   // Filtered Patrol Reports calculation
   const filteredReports = useMemo(() => {
+    const todayStr = getTodayDateString();
+    const yesterdayStr = getYesterdayDateString();
+    const sevenDaysAgoStr = getOffsetDateString(-7);
+
     return reports.filter((rep) => {
-      if (filters.date === 'today' && rep.scheduledDate !== '2026-10-20') return false;
-      if (filters.date === 'yesterday' && rep.scheduledDate !== '2026-10-19') return false;
+      if (filters.date === 'today' && rep.scheduledDate !== todayStr) return false;
+      if (filters.date === 'yesterday' && rep.scheduledDate !== yesterdayStr) return false;
+      if (filters.date === 'last_7_days' && (rep.scheduledDate < sevenDaysAgoStr || rep.scheduledDate > todayStr)) return false;
 
       if (filters.area !== 'all' && rep.area !== filters.area) return false;
       if (filters.officerId !== 'all' && rep.officerId !== filters.officerId) return false;
@@ -630,6 +693,42 @@ export default function App() {
       );
       setTimeout(() => setGlobalFeedback(null), 4000);
     }
+
+    // 7. Phase 9 & 9A: Automated WhatsApp Notification to Factory Owner, HR & REXON Admin
+    const targetSite = sites.find((s) => s.id === newReport.siteId);
+    if (targetSite) {
+      const adminNotifConfig = (companyConfig as any)?.adminWhatsAppAlertsEnabled
+        ? {
+            enabled: true,
+            adminName: (companyConfig as any).adminWhatsAppName || 'REXON Operations Desk',
+            adminPhone: (companyConfig as any).adminWhatsAppPhone || '',
+            notifyOn: (companyConfig as any).adminNotifyOn || 'all_reports',
+            testMode: (companyConfig as any).adminTestMode ?? true
+          }
+        : undefined;
+
+      try {
+        const notifResult = await dispatchPatrolReportNotification(targetSite, newReport, adminNotifConfig);
+        if (notifResult.triggered) {
+          const updatedWithLogs: PatrolReport = {
+            ...newReport,
+            notificationStatus: notifResult.overallStatus,
+            notificationLogs: notifResult.logs
+          };
+          setReports((prev) =>
+            prev.map((r) => (r.id === newReport.id ? updatedWithLogs : r))
+          );
+          if (isFirebaseConfigured) {
+            await submitPatrolReportToFirestore(DEFAULT_COMPANY_ID, updatedWithLogs, incidentsList);
+          }
+          if (notifResult.feedbackMessage) {
+            setGlobalFeedback((prev) => `${prev || ''} · ${notifResult.feedbackMessage}`);
+          }
+        }
+      } catch (notifErr: any) {
+        console.warn('[WhatsApp Notification] Dispatch issue:', notifErr);
+      }
+    }
   };
 
   // Switch to Owner Dashboard and open specific report
@@ -693,6 +792,17 @@ export default function App() {
     );
   }
 
+  // --- RENDER ADMIN LOGIN IF NOT AUTHENTICATED ---
+  if (!isAdminAuthenticated) {
+    return (
+      <AdminLoginView
+        adminCredentials={adminCredentials}
+        onLoginSuccess={handleAdminLoginSuccess}
+        onSwitchToFieldOfficerMode={() => setAppMode('field_officer')}
+      />
+    );
+  }
+
   // --- RENDER SECURITY OWNER DASHBOARD ---
   return (
     <div className="min-h-screen bg-[#F8F5EF] text-[#4B3621] flex flex-col antialiased font-sans">
@@ -709,6 +819,7 @@ export default function App() {
         isRefreshing={isRefreshing}
         companyName={companyConfig.companyName}
         ownerName={companyConfig.ownerName}
+        onLogoutAdmin={handleAdminLogout}
       />
 
 
@@ -1017,7 +1128,9 @@ export default function App() {
               zones={zones}
               masterChecklists={masterChecklists}
               companyConfig={companyConfig}
+              adminCredentials={adminCredentials}
               onSaveCompanyConfig={handleSaveCompanyConfig}
+              onUpdateAdminCredentials={handleUpdateAdminCredentials}
               onOpenMobilePreview={() => setAppMode('field_officer')}
               onResetToDemoDefaults={handleResetToDemoDefaults}
             />
@@ -1033,6 +1146,10 @@ export default function App() {
           site={sites.find((s) => s.id === selectedReport.siteId)}
           allSiteIncidents={incidents.filter((i) => i.siteId === selectedReport.siteId)}
           onClose={() => setSelectedReport(null)}
+          onUpdateReport={(updated) => {
+            setSelectedReport(updated);
+            setReports((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+          }}
         />
       )}
 

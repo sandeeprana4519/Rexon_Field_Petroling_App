@@ -17,7 +17,21 @@ const STORAGE_KEYS = {
   CHECKLISTS: 'rexon_demo_master_checklists_v2',
   AREAS: 'rexon_demo_areas_v2',
   OFFICER_AUTH: 'rexon_officer_auth_session',
+  ADMIN_AUTH: 'rexon_admin_auth_session',
+  ADMIN_CREDENTIALS: 'rexon_admin_credentials_v1',
   COMPANY_CONFIG: 'rexon_demo_company_config_v2'
+};
+
+export interface AdminCredentials {
+  adminId: string;
+  password: string;
+  updatedAt?: string;
+}
+
+export const DEFAULT_ADMIN_CREDENTIALS: AdminCredentials = {
+  adminId: 'admin@rexon.com',
+  password: 'rexonadmin123',
+  updatedAt: '2026-10-23T00:00:00.000Z'
 };
 
 export const loadFromStorage = <T>(key: string, defaultValue: T): T => {

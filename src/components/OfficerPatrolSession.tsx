@@ -46,6 +46,7 @@ import {
   StorageAvailabilityStatus
 } from '../services/storageService';
 import { DEFAULT_COMPANY_ID } from '../services/firestoreService';
+import { getTodayDateString, formatDateDisplay } from '../utils/dateUtils';
 
 interface OfficerPatrolSessionProps {
   site: Site;
@@ -358,8 +359,8 @@ export const OfficerPatrolSession: React.FC<OfficerPatrolSessionProps> = ({
 
     const now = new Date();
     const completedTimeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const todayDateString = '2026-10-20';
-    const reportCode = `PTR-2026-${Math.floor(100 + Math.random() * 900)}`;
+    const todayDateString = getTodayDateString(now);
+    const reportCode = `PTR-${now.getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
     const effectiveReportId = reportIdRef.current;
 
     // Build checklist results list
@@ -444,7 +445,7 @@ export const OfficerPatrolSession: React.FC<OfficerPatrolSessionProps> = ({
     const createdIncidents: IncidentRecord[] = [];
     if (issuesFound.length > 0) {
       issuesFound.forEach((item, index) => {
-        const incId = `INC-2026-${Math.floor(100 + Math.random() * 900)}-${index + 1}`;
+        const incId = `INC-${now.getFullYear()}-${Math.floor(100 + Math.random() * 900)}-${index + 1}`;
         const incident: IncidentRecord = {
           id: incId,
           siteId: site.id,
@@ -613,8 +614,14 @@ export const OfficerPatrolSession: React.FC<OfficerPatrolSessionProps> = ({
             <div className="flex items-center gap-2 min-w-0 flex-1">
               <Clock className="w-4 h-4 text-[#6F4E37] shrink-0" />
               <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                <span className="text-[#8B735B]">Officer Check-In Time:</span>
+                <span className="text-[#8B735B]">Officer Check-In:</span>
+                <span className="font-semibold text-[#4B3621]">{formatDateDisplay(getTodayDateString())}</span>
+                <span className="text-[#8B735B]">·</span>
                 <span className="font-mono font-bold text-[#4B3621]">{checkInTime}</span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-[#E8F5E9] text-[#1B5E20] border border-[#C8E6C9] font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#2E7D32] animate-pulse"></span>
+                  LIVE
+                </span>
               </div>
             </div>
 

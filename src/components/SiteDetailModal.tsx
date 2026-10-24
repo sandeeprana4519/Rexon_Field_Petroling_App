@@ -14,10 +14,13 @@ import {
   Printer,
   Calendar,
   Video,
-  Play
+  Play,
+  Send,
+  RefreshCw
 } from 'lucide-react';
 import { PatrolReport, Site, IncidentRecord } from '../types';
 import { SiteReportsDownloadModal } from './SiteReportsDownloadModal';
+import { resendWhatsAppReportNotification, checkWhatsAppConfigurationStatus, formatWhatsAppNotificationText } from '../services/whatsappNotificationService';
 
 interface SiteDetailModalProps {
   report: PatrolReport;
@@ -25,6 +28,7 @@ interface SiteDetailModalProps {
   allSiteIncidents: IncidentRecord[];
   isOfficerMode?: boolean;
   onClose: () => void;
+  onUpdateReport?: (updated: PatrolReport) => void;
 }
 
 export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
@@ -32,11 +36,53 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
   site,
   allSiteIncidents,
   isOfficerMode = false,
-  onClose
+  onClose,
+  onUpdateReport
 }) => {
-  const [activeTab, setActiveTab] = useState<'checklist' | 'gps_photos' | 'remarks' | 'incidents'>('checklist');
+  const [activeTab, setActiveTab] = useState<'checklist' | 'gps_photos' | 'remarks' | 'incidents' | 'whatsapp'>('checklist');
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [isSiteDownloadModalOpen, setIsSiteDownloadModalOpen] = useState(false);
+  const [currentReport, setCurrentReport] = useState<PatrolReport>(report);
+  const [resendingRecipientId, setResendingRecipientId] = useState<string | null>(null);
+  const [resendFeedback, setResendFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  React.useEffect(() => {
+    setCurrentReport(report);
+  }, [report]);
+
+  const handleManualResend = async (recipientId: string) => {
+    if (!site) return;
+    setResendingRecipientId(recipientId);
+    setResendFeedback(null);
+    try {
+      const res = await resendWhatsAppReportNotification(site, currentReport, recipientId);
+      const currentLogs = currentReport.notificationLogs || [];
+      const updatedLogs = [
+        ...currentLogs.filter((l) => l.recipientId !== recipientId),
+        res.updatedLog
+      ];
+      const updatedReport: PatrolReport = {
+        ...currentReport,
+        notificationLogs: updatedLogs,
+        notificationStatus: res.updatedLog.status
+      };
+      setCurrentReport(updatedReport);
+      if (onUpdateReport) {
+        onUpdateReport(updatedReport);
+      }
+      setResendFeedback({
+        type: res.success ? 'success' : 'error',
+        message: res.message
+      });
+    } catch (err: any) {
+      setResendFeedback({
+        type: 'error',
+        message: err?.message || 'Failed to dispatch notification.'
+      });
+    } finally {
+      setResendingRecipientId(null);
+    }
+  };
 
   const completedChecklistCount = report.checklist.filter((i) => i.checked).length;
   const totalChecklistCount = report.checklist.length;
@@ -161,8 +207,8 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
           </div>
         )}
 
-        {/* Navigation Tabs (2 columns on mobile so remaining options shift underneath, 4 columns on desktop) */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2.5 sm:px-4 bg-[#FAF7F2] border-b border-[#E7DED2] shrink-0">
+        {/* Navigation Tabs (Responsive grid to fit WhatsApp tab) */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 p-2.5 sm:px-4 bg-[#FAF7F2] border-b border-[#E7DED2] shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab('checklist')}
@@ -213,6 +259,19 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
           >
             <History className={`w-3.5 h-3.5 shrink-0 ${activeTab === 'incidents' ? 'text-white' : 'text-[#6F4E37]'}`} />
             <span className="truncate">Incident History ({displayIncidents.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('whatsapp')}
+            className={`min-h-[40px] px-2.5 py-2 text-[11px] sm:text-xs rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer text-center col-span-2 sm:col-span-1 ${
+              activeTab === 'whatsapp'
+                ? 'bg-[#128C7E] text-white border-[#128C7E] font-bold shadow-xs'
+                : 'bg-white text-[#4B3621] border-[#E7DED2] hover:bg-[#F0E8DD] font-semibold shadow-2xs'
+            }`}
+          >
+            <Send className={`w-3.5 h-3.5 shrink-0 ${activeTab === 'whatsapp' ? 'text-white' : 'text-[#128C7E]'}`} />
+            <span className="truncate">WhatsApp Alerts ({currentReport.notificationStatus || 'off'})</span>
           </button>
         </div>
 
@@ -652,6 +711,253 @@ export const SiteDetailModal: React.FC<SiteDetailModalProps> = ({
               )}
             </div>
           )}
+
+          {/* TAB 5: WHATSAPP AUDIT & DISPATCH */}
+          {activeTab === 'whatsapp' && (() => {
+            const siteConfig = site?.whatsappNotifications || site?.notificationConfig;
+            const recipients = siteConfig?.recipients || [];
+            const isServiceConfigured = checkWhatsAppConfigurationStatus().isConfigured;
+
+            return (
+              <div className="space-y-4">
+                {/* WhatsApp Service Status Banner */}
+                <div className="p-4 rounded-xl bg-[#FAF7F2] border border-[#E7DED2] space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Send className="w-4 h-4 text-[#128C7E]" />
+                      <span className="text-xs font-bold text-[#4B3621] uppercase tracking-wide">
+                        WhatsApp Report Dispatch Engine (मेटा क्लाउड एपीआई)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {siteConfig?.testMode && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]">
+                          SAFE TEST MODE ACTIVE
+                        </span>
+                      )}
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${
+                        currentReport.notificationStatus === 'sent'
+                          ? 'bg-[#E8F5E9] text-[#1B5E20] border-[#C8E6C9]'
+                          : currentReport.notificationStatus === 'test_mode'
+                          ? 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]'
+                          : currentReport.notificationStatus === 'failed'
+                          ? 'bg-[#FFEBEE] text-[#C62828] border-[#FFCDD2]'
+                          : 'bg-[#F0E8DD] text-[#4B3621] border-[#E7DED2]'
+                      }`}>
+                        {currentReport.notificationStatus || 'UNCONFIGURED'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                    <div className="p-2.5 rounded-lg bg-[#FFFFFF] border border-[#E7DED2]">
+                      <div className="text-[10px] text-[#8B735B] uppercase font-bold">Authorized Entity</div>
+                      <div className="font-bold text-[#4B3621] mt-0.5 truncate">
+                        {siteConfig?.companyOrFactoryName || siteConfig?.companyName || site?.clientName || 'Rexon Client'}
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-[#FFFFFF] border border-[#E7DED2]">
+                      <div className="text-[10px] text-[#8B735B] uppercase font-bold">Meta Utility Template</div>
+                      <div className="font-mono text-[11px] font-semibold text-[#128C7E] mt-0.5 truncate">
+                        rexon_patrol_summary_v1
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-[#FFFFFF] border border-[#E7DED2]">
+                      <div className="text-[10px] text-[#8B735B] uppercase font-bold">Configured Recipients</div>
+                      <div className="font-bold text-[#4B3621] mt-0.5">
+                        {recipients.filter(r => r.isActive !== false && r.active !== false).length} Active Contact(s)
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Honest credentials disclosure notice */}
+                  {!isServiceConfigured && (
+                    <div className="p-3 rounded-lg bg-[#FEF3C7]/70 border border-[#FDE68A] text-xs text-[#92400E] flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-[#B45309] shrink-0 mt-0.5" />
+                      <div className="leading-relaxed">
+                        <strong>Production Setup Pending:</strong> Firebase Cloud Functions URL or WhatsApp Meta Cloud API Access Token is pending in backend configuration. Notifications are safely staged without simulating false deliveries.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Resend feedback toast */}
+                  {resendFeedback && (
+                    <div className={`p-3 rounded-lg text-xs flex items-center justify-between gap-2 border ${
+                      resendFeedback.type === 'success'
+                        ? 'bg-[#E8F5E9] border-[#C8E6C9] text-[#1B5E20]'
+                        : 'bg-[#FFEBEE] border-[#FFCDD2] text-[#C62828]'
+                    }`}>
+                      <span className="font-medium">{resendFeedback.message}</span>
+                      <button
+                        type="button"
+                        onClick={() => setResendFeedback(null)}
+                        className="p-1 hover:opacity-75 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Recipients List & Audit Logs */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-[#4B3621] uppercase tracking-wide">
+                      Authorized Factory / Company Recipients ({recipients.length})
+                    </h4>
+                    <span className="text-[11px] text-[#8B735B]">
+                      Strict Server-Side Meta Cloud API Dispatch
+                    </span>
+                  </div>
+
+                  {recipients.length === 0 ? (
+                    <div className="p-8 rounded-xl bg-[#FAF7F2] border border-dashed border-[#E7DED2] text-center text-xs text-[#8B735B] space-y-2">
+                      <Send className="w-8 h-8 text-[#8B735B] mx-auto opacity-50" />
+                      <div className="font-bold text-[#4B3621]">No WhatsApp Recipients Configured</div>
+                      <p className="max-w-md mx-auto leading-relaxed">
+                        To automatically alert the Factory Owner, HR Manager, or Plant Head when patrols are completed, configure WhatsApp recipients under Site Management.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-[#E7DED2] border border-[#E7DED2] rounded-xl overflow-hidden bg-[#FFFFFF]">
+                      {recipients.map((rec) => {
+                        const log = currentReport.notificationLogs?.find(l => l.recipientId === rec.id);
+                        const isPending = resendingRecipientId === rec.id;
+                        const isContactActive = rec.isActive !== false && rec.active !== false;
+                        const displayPhone = rec.phone || rec.phoneNumber || '';
+
+                        return (
+                          <div key={rec.id} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#FAF7F2] transition-colors">
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs font-bold text-[#4B3621]">{rec.name}</span>
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#E8D8C5] text-[#4B3621] border border-[#E7DED2]">
+                                  {rec.role}
+                                </span>
+                                {!isContactActive && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#FFEBEE] text-[#C62828] border border-[#FFCDD2] font-semibold">
+                                    Disabled
+                                  </span>
+                                )}
+                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-[#F0E8DD] text-[#8B735B] border border-[#E7DED2]">
+                                  {rec.notifyOnIncidentsOnly || rec.triggerOn === 'incidents_only' ? 'Alert on Incidents Only' : 'Every Patrol'}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-3 text-xs text-[#8B735B]">
+                                <span className="font-mono text-[#4B3621] font-semibold">{displayPhone}</span>
+                                {log && (
+                                  <>
+                                    <span>·</span>
+                                    <span className="text-[11px]">
+                                      Last Attempt: {new Date(log.sentAt || log.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+
+                              {log && (
+                                <div className="text-[11px] mt-1 space-y-0.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[#8B735B]">Status:</span>
+                                    <span className={`font-mono uppercase font-bold text-[10px] px-1.5 py-0.2 rounded border ${
+                                      log.status === 'sent'
+                                        ? 'bg-[#E8F5E9] text-[#1B5E20] border-[#C8E6C9]'
+                                        : log.status === 'test_mode'
+                                        ? 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]'
+                                        : log.status === 'failed'
+                                        ? 'bg-[#FFEBEE] text-[#C62828] border-[#FFCDD2]'
+                                        : 'bg-[#F0E8DD] text-[#8B735B] border-[#E7DED2]'
+                                    }`}>
+                                      {log.status}
+                                    </span>
+                                    {log.providerMessageId && (
+                                      <span className="text-[#8B735B] font-mono text-[10px] truncate max-w-[160px]">
+                                        ID: {log.providerMessageId}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {log.errorMessage && (
+                                    <p className="text-[#C62828] text-[11px] bg-[#FFEBEE] px-2 py-1 rounded border border-[#FFCDD2] mt-1">
+                                      {log.errorMessage}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Manual Resend Option for Authorized Admins */}
+                            {!isOfficerMode && (
+                              <div className="shrink-0 self-start sm:self-center">
+                                <button
+                                  type="button"
+                                  disabled={isPending || !isContactActive}
+                                  onClick={() => handleManualResend(rec.id)}
+                                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer shadow-2xs ${
+                                    isPending
+                                      ? 'bg-[#FAF7F2] text-[#8B735B] border-[#E7DED2] cursor-not-allowed'
+                                      : !isContactActive
+                                      ? 'bg-[#FAF7F2] text-[#8B735B] border-[#E7DED2] opacity-50 cursor-not-allowed'
+                                      : 'bg-[#128C7E] hover:bg-[#075E54] text-white border-[#128C7E]'
+                                  }`}
+                                  title="Resend patrol summary WhatsApp message to this recipient"
+                                >
+                                  <RefreshCw className={`w-3.5 h-3.5 ${isPending ? 'animate-spin' : ''}`} />
+                                  <span>{isPending ? 'Sending...' : 'Resend (भेजें)'}</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Template Preview (WhatsApp Style) */}
+                <div className="p-4 rounded-xl bg-[#FAF7F2] border border-[#E7DED2] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[#4B3621] uppercase tracking-wide">
+                      Live Meta Cloud API Notification Preview
+                    </span>
+                    <span className="text-[11px] font-mono text-[#8B735B]">
+                      Confidential details redacted from public links
+                    </span>
+                  </div>
+
+                  <div className="max-w-md mx-auto bg-[#ECE5DD] p-3 rounded-xl border border-[#D5CDBC] shadow-inner">
+                    <div className="bg-[#FFFFFF] rounded-lg p-3.5 shadow-xs text-xs text-[#303030] leading-relaxed relative">
+                      <div className="font-bold text-[#128C7E] border-b border-[#E7DED2] pb-1.5 mb-2 flex items-center justify-between">
+                        <span>🛡️ REXON SECURITY PATROL ALERT</span>
+                        <span className="text-[10px] font-mono text-[#8B735B]">Utility</span>
+                      </div>
+
+                      <pre className="whitespace-pre-wrap font-sans text-xs text-[#1F2937]">
+                        {site
+                          ? formatWhatsAppNotificationText(
+                              site,
+                              currentReport,
+                              recipients[0] || {
+                                id: 'sample',
+                                name: 'Authorized Recipient',
+                                role: 'Owner' as const,
+                                phone: '+919876543210',
+                                isActive: true
+                              }
+                            )
+                          : 'Patrol Report Details'}
+                      </pre>
+
+                      <div className="text-[10px] text-right text-[#8B735B] mt-2 font-mono flex items-center justify-end gap-1">
+                        <span>{currentReport.completedAt || 'Just now'}</span>
+                        <span className="text-[#34B7F1]">✓✓</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Modal Footer (shrink-0 ensures buttons and audit info are never clipped) */}

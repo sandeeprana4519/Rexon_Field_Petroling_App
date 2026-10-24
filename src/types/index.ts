@@ -105,6 +105,41 @@ export interface Site {
   checklistTemplates: ChecklistItem[];
   incidentCount: number;
   lastPatrolTime: string;
+  // Phase 9: Site-specific WhatsApp Notification Settings
+  whatsappNotifications?: SiteNotificationConfig;
+  notificationConfig?: SiteNotificationConfig;
+}
+
+export type WhatsAppNotificationRole = 'Owner' | 'Factory Manager' | 'HR' | 'Security Head' | 'Operations Desk';
+
+export interface SiteWhatsAppRecipient {
+  id: string;
+  name: string;
+  role: WhatsAppNotificationRole;
+  phone: string; // E.164 phone with country code, e.g. +91 9876543210
+  phoneNumber?: string;
+  isActive: boolean;
+  active?: boolean;
+  notifyOnAllPatrols?: boolean;
+  notifyOnIncidentsOnly?: boolean;
+  triggerOn?: 'all_patrols' | 'incidents_only';
+}
+
+export interface SiteNotificationConfig {
+  enabled: boolean;
+  companyOrFactoryName?: string;
+  companyName?: string;
+  recipients: SiteWhatsAppRecipient[];
+  testMode?: boolean; // When true, stages notifications without sending real provider messages
+  templateName?: string;
+}
+
+export interface AdminWhatsAppNotificationConfig {
+  enabled: boolean;
+  adminName: string;
+  adminPhone: string; // E.164 phone with country code
+  notifyOn: 'all_reports' | 'incidents_only';
+  testMode?: boolean;
 }
 
 export interface FieldOfficer {
@@ -158,6 +193,27 @@ export interface PatrolReport {
   evidenceItems?: PatrolEvidenceItem[];
   incidents: IncidentRecord[];
   incidentCount: number;
+  // Phase 9: Automated WhatsApp Notification Tracking
+  notificationStatus?: NotificationDeliveryStatus;
+  notificationLogs?: ReportNotificationLog[];
+}
+
+export type NotificationDeliveryStatus = 'pending' | 'sent' | 'failed' | 'retry_required' | 'unconfigured' | 'test_mode';
+
+export interface ReportNotificationLog {
+  id: string;
+  recipientId: string;
+  recipientName: string;
+  recipientRole?: string;
+  recipientPhone: string;
+  phoneNumber?: string;
+  status: NotificationDeliveryStatus;
+  sentAt?: string;
+  timestamp?: string;
+  errorMessage?: string;
+  providerMessageId?: string;
+  retryCount?: number;
+  testMode?: boolean;
 }
 
 export type AssignmentStatus = 'active' | 'completed' | 'cancelled' | 'scheduled';

@@ -24,6 +24,7 @@ import {
 import { Assignment, AssignmentStatus, Site, FieldOfficer, OfficerShift } from '../types';
 import { DEMO_AREAS } from '../data/demoData';
 import { downloadAssignmentsCSV } from '../utils/csvExport';
+import { getTodayDateString, getOffsetDateString } from '../utils/dateUtils';
 
 
 interface AssignmentsViewProps {
@@ -96,8 +97,8 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
   const [formOfficerId, setFormOfficerId] = useState(officers[0]?.id || '');
   const [formSelectedCompany, setFormSelectedCompany] = useState<string>('all');
   const [formSelectedSiteIds, setFormSelectedSiteIds] = useState<string[]>([]);
-  const [formStartDate, setFormStartDate] = useState('2026-10-20');
-  const [formEndDate, setFormEndDate] = useState('2026-10-26'); // default 7 days
+  const [formStartDate, setFormStartDate] = useState(() => getTodayDateString());
+  const [formEndDate, setFormEndDate] = useState(() => getOffsetDateString(6)); // default 7 days
   const [formScheduledTime, setFormScheduledTime] = useState('08:00 AM');
   const [formPatrolFrequency, setFormPatrolFrequency] = useState('2x per shift');
   const [formWorkingDays, setFormWorkingDays] = useState('All Days (Mon - Sun)');
@@ -145,7 +146,7 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
       };
     }
 
-    const todayStr = '2026-10-20'; // Current demo anchor date
+    const todayStr = getTodayDateString(); // Dynamic real-time date
     const start = startDate || todayStr;
     const end = endDate || start;
 
@@ -260,8 +261,8 @@ export const AssignmentsView: React.FC<AssignmentsViewProps> = ({
     // Pre-select sites matching the officer's area for convenience
     const matchingSites = sites.filter((s) => s.area === initialOfficer?.area && s.isActive);
     setFormSelectedSiteIds(matchingSites.slice(0, 2).map((s) => s.id));
-    setFormStartDate('2026-10-20');
-    setFormEndDate('2026-10-26'); // 7 days default
+    setFormStartDate(getTodayDateString());
+    setFormEndDate(getOffsetDateString(6)); // 7 days default
     setFormScheduledTime('08:00 AM');
     setFormPatrolFrequency('2x per shift');
     setFormWorkingDays('All Days (Mon - Sun)');

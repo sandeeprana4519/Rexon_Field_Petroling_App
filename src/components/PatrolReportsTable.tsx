@@ -7,7 +7,8 @@ import {
   AlertOctagon,
   ChevronRight,
   ShieldCheck,
-  FileText
+  FileText,
+  MessageSquare
 } from 'lucide-react';
 import { PatrolReport, PatrolStatus } from '../types';
 
@@ -85,6 +86,43 @@ export const PatrolReportsTable: React.FC<PatrolReportsTableProps> = ({
         </span>
       </span>
     );
+  };
+
+  const getWhatsAppBadge = (report: PatrolReport) => {
+    if (!report.notificationStatus) return null;
+    switch (report.notificationStatus) {
+      case 'sent':
+        return (
+          <span className="inline-flex items-center gap-1 text-[10px] text-[#1B5E20] bg-[#E8F5E9] border border-[#C8E6C9] px-1.5 py-0.5 rounded font-mono font-bold" title="WhatsApp report summary sent to Owner/HR">
+            <MessageSquare className="w-2.5 h-2.5 text-[#25D366]" />
+            <span>WA Sent</span>
+          </span>
+        );
+      case 'test_mode':
+        return (
+          <span className="inline-flex items-center gap-1 text-[10px] text-[#92400E] bg-[#FEF3C7] border border-[#FDE68A] px-1.5 py-0.5 rounded font-mono font-bold" title="Safe Test Mode: WhatsApp notification staged in audit log">
+            <MessageSquare className="w-2.5 h-2.5 text-[#D97706]" />
+            <span>WA Test</span>
+          </span>
+        );
+      case 'unconfigured':
+        return (
+          <span className="inline-flex items-center gap-1 text-[10px] text-[#8B735B] bg-[#FAF7F2] border border-[#E7DED2] px-1.5 py-0.5 rounded font-mono" title="Setup Pending: Cloud Functions credentials required">
+            <MessageSquare className="w-2.5 h-2.5 text-[#8B735B]" />
+            <span>WA Pending</span>
+          </span>
+        );
+      case 'failed':
+      case 'retry_required':
+        return (
+          <span className="inline-flex items-center gap-1 text-[10px] text-[#C62828] bg-[#FFEBEE] border border-[#FFCDD2] px-1.5 py-0.5 rounded font-mono font-bold" title="WhatsApp dispatch failed">
+            <MessageSquare className="w-2.5 h-2.5 text-[#C62828]" />
+            <span>WA Failed</span>
+          </span>
+        );
+      default:
+        return null;
+    }
   };
 
   if (reports.length === 0) {
@@ -200,7 +238,10 @@ export const PatrolReportsTable: React.FC<PatrolReportsTableProps> = ({
 
                 {/* 5. Status */}
                 <td className="py-3 px-4">
-                  {getStatusBadge(report.status)}
+                  <div className="flex flex-col gap-1 items-start">
+                    {getStatusBadge(report.status)}
+                    {getWhatsAppBadge(report)}
+                  </div>
                 </td>
 
                 {/* 6. Incident Indicator */}

@@ -36,6 +36,7 @@ import { SiteDetailModal } from './SiteDetailModal';
 import { OfficerLoginView } from './OfficerLoginView';
 import { OfficerProfileModal } from './OfficerProfileModal';
 import { loadFromStorage, saveToStorage, STORAGE_KEYS } from '../utils/storage';
+import { useLiveClock } from '../utils/dateUtils';
 
 interface FieldOfficerModeProps {
   officers: FieldOfficer[];
@@ -117,8 +118,8 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | PatrolStatus>('all');
 
-  // Today's formatted date string
-  const todayFormatted = 'Tuesday, Oct 20, 2026';
+  // Live date & real-time clock hook (ticking every 1000ms for live frequency)
+  const { todayDateStr, headerDateFormatted, liveTimeWithSeconds, liveTimeShort } = useLiveClock(1000);
 
   // Find all assignments for this officer
   const officerAssignments = useMemo(() => {
@@ -142,7 +143,7 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
       const scheduledTime = matchAssignment?.scheduledTime || (index === 0 ? '08:00 AM' : index === 1 ? '10:00 AM' : index === 2 ? '01:00 PM' : '03:30 PM');
 
       const existingReport = reports.find(
-        (r) => r.siteId === site.id && r.officerId === activeOfficer.id && r.status === 'completed'
+        (r) => r.siteId === site.id && r.officerId === activeOfficer.id && r.status === 'completed' && (r.scheduledDate === todayDateStr || !r.scheduledDate)
       );
 
       let status: PatrolStatus = 'pending';
@@ -315,9 +316,15 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
         <div className="bg-[#FFFFFF] border border-[#E7DED2] rounded-2xl p-4 sm:p-5 space-y-3 shadow-2xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E7DED2] pb-3">
             <div>
-              <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-[#8B735B]">
-                ACTIVE DUTY ASSIGNMENT · {todayFormatted}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-[#8B735B]">
+                  ACTIVE DUTY ASSIGNMENT · {headerDateFormatted}
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-[#E8F5E9] text-[#1B5E20] border border-[#C8E6C9] shadow-2xs">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#2E7D32] animate-pulse"></span>
+                  LIVE {liveTimeWithSeconds}
+                </span>
+              </div>
               <div className="flex items-center gap-2 mt-0.5">
                 <h1 className="text-base sm:text-lg font-bold text-[#4B3621]">
                   Officer {activeOfficer.name}
@@ -531,7 +538,7 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
                       <button
                         type="button"
                         onClick={() => {
-                          const matchingReport = report || reports.find((r) => r.siteId === site.id);
+                          const matchingReport = report || reports.find((r) => r.siteId === site.id && (r.scheduledDate === todayDateStr || !r.scheduledDate)) || reports.find((r) => r.siteId === site.id);
                           if (matchingReport) {
                             setViewingReport(matchingReport);
                           } else {
@@ -544,10 +551,10 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
                               officerId: activeOfficer.id,
                               officerName: activeOfficer.name,
                               officerBadge: activeOfficer.badgeNumber,
-                              scheduledDate: '2026-10-20',
+                              scheduledDate: todayDateStr,
                               scheduledTime: scheduledTime,
-                              actualCheckInTime: scheduledTime,
-                              completedAt: 'Logged on shift',
+                              actualCheckInTime: liveTimeShort,
+                              completedAt: `Completed today at ${liveTimeShort}`,
                               status: 'completed',
                               finalVerdict: 'completed',
                               checklist: (site.checklistTemplates && site.checklistTemplates.length > 0

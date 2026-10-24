@@ -31,6 +31,7 @@ import {
   LayoutGrid
 } from 'lucide-react';
 import { FieldOfficer, Site, PatrolReport, Assignment, IncidentRecord } from '../types';
+import { getTodayDateString, getOffsetDateString } from '../utils/dateUtils';
 
 export type TimeframeMode = 'daily' | 'weekly' | 'monthly' | 'custom';
 
@@ -53,9 +54,9 @@ export const OfficerDailyReportModal: React.FC<OfficerDailyReportModalProps> = (
 }) => {
   // Timeframe and date state
   const [timeframeMode, setTimeframeMode] = useState<TimeframeMode>('daily');
-  const [selectedDate, setSelectedDate] = useState('2026-10-20');
-  const [customStartDate, setCustomStartDate] = useState('2026-10-14');
-  const [customEndDate, setCustomEndDate] = useState('2026-10-20');
+  const [selectedDate, setSelectedDate] = useState(() => getTodayDateString());
+  const [customStartDate, setCustomStartDate] = useState(() => getOffsetDateString(-6));
+  const [customEndDate, setCustomEndDate] = useState(() => getTodayDateString());
 
   // UI state
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
@@ -81,7 +82,7 @@ export const OfficerDailyReportModal: React.FC<OfficerDailyReportModalProps> = (
   };
 
   const handleSetToday = () => {
-    setSelectedDate('2026-10-20');
+    setSelectedDate(getTodayDateString());
   };
 
   // Compute effective date range [effectiveStartDate, effectiveEndDate]
@@ -156,7 +157,7 @@ export const OfficerDailyReportModal: React.FC<OfficerDailyReportModalProps> = (
         (rep.officerName && rep.officerName.toLowerCase() === officer.name.toLowerCase());
       if (!matchesOfficer) return false;
 
-      const repDate = rep.scheduledDate || '2026-10-20';
+      const repDate = rep.scheduledDate || getTodayDateString();
       return repDate >= effectiveStartDate && repDate <= effectiveEndDate;
     });
   }, [reports, officer.id, officer.badgeNumber, officer.name, effectiveStartDate, effectiveEndDate]);

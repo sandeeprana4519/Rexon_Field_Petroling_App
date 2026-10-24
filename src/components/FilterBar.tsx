@@ -2,6 +2,7 @@ import React from 'react';
 import { Filter, X, Search, Calendar, MapPin, User, Building, CheckCircle } from 'lucide-react';
 import { FilterState, Site, FieldOfficer } from '../types';
 import { DEMO_AREAS } from '../data/demoData';
+import { formatShortDate, getTodayDateString, getYesterdayDateString } from '../utils/dateUtils';
 
 interface FilterBarProps {
   filters: FilterState;
@@ -70,8 +71,8 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             onChange={(e) => onFilterChange('date', e.target.value)}
             className="w-full bg-[#FFFFFF] border border-[#E7DED2] rounded-lg px-2.5 py-1.5 text-xs text-[#4B3621] focus:outline-none focus:border-[#6F4E37] focus:ring-1 focus:ring-[#6F4E37]/30 cursor-pointer"
           >
-            <option value="today">Today (Oct 20, 2026)</option>
-            <option value="yesterday">Yesterday (Oct 19, 2026)</option>
+            <option value="today">Today ({formatShortDate(getTodayDateString())})</option>
+            <option value="yesterday">Yesterday ({formatShortDate(getYesterdayDateString())})</option>
             <option value="last_7_days">Last 7 Days</option>
             <option value="all">All Available Records</option>
           </select>

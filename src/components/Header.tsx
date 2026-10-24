@@ -1,6 +1,7 @@
 import React from 'react';
-import { Shield, Smartphone, RefreshCw, Menu } from 'lucide-react';
+import { Shield, Smartphone, RefreshCw, Menu, Clock, LogOut } from 'lucide-react';
 import { NavigationTab, AppMode } from '../types';
+import { useLiveClock } from '../utils/dateUtils';
 
 interface HeaderProps {
   currentTab: NavigationTab;
@@ -11,6 +12,7 @@ interface HeaderProps {
   isRefreshing: boolean;
   companyName?: string;
   ownerName?: string;
+  onLogoutAdmin?: () => void;
 }
 
 const TAB_TITLES: Record<NavigationTab, { title: string; subtitle: string }> = {
@@ -32,10 +34,11 @@ export const Header: React.FC<HeaderProps> = ({
   onRefreshData,
   isRefreshing,
   companyName = 'Rexon Field Patrolling App',
-  ownerName = 'Cmdr. J. Reynolds'
+  ownerName = 'Cmdr. J. Reynolds',
+  onLogoutAdmin
 }) => {
   const currentInfo = TAB_TITLES[currentTab];
-
+  const { displayDateFormatted, liveTimeWithSeconds } = useLiveClock(1000);
 
   return (
     <header className="bg-[#FFFFFF] border-b border-[#E7DED2] px-4 sm:px-6 py-3.5 sticky top-0 z-30 shadow-2xs">
@@ -72,6 +75,17 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right: Actions & Role Mode Switch */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Live Date & Real-Time Clock Badge */}
+          <div className="hidden md:flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#FAF7F2] border border-[#E7DED2] text-xs font-mono text-[#4B3621] shadow-2xs">
+            <span className="w-2 h-2 rounded-full bg-[#1B5E20] animate-pulse"></span>
+            <span className="font-semibold">{displayDateFormatted}</span>
+            <span className="text-[#8B735B]">·</span>
+            <span className="font-bold text-[#6F4E37] flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5 text-[#6F4E37]" />
+              {liveTimeWithSeconds}
+            </span>
+          </div>
+
           <button
             onClick={onRefreshData}
             disabled={isRefreshing}
@@ -93,14 +107,29 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="sm:hidden">Officer Mode</span>
           </button>
 
-          <div className="hidden lg:flex items-center gap-2.5 pl-2 border-l border-[#E7DED2]">
-            <div className="w-7 h-7 rounded-full bg-[#E8D8C5] border border-[#E7DED2] flex items-center justify-center text-xs font-bold text-[#4B3621]">
-              {ownerName.split(' ').map((n) => n[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'OP'}
+          {/* Admin User Badge & Logout */}
+          <div className="flex items-center gap-2 pl-2 border-l border-[#E7DED2]">
+            <div className="hidden lg:flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-full bg-[#E8D8C5] border border-[#E7DED2] flex items-center justify-center text-xs font-bold text-[#4B3621]">
+                {ownerName.split(' ').map((n) => n[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || 'OP'}
+              </div>
+              <div className="text-left text-xs leading-tight">
+                <div className="font-semibold text-[#4B3621] truncate max-w-[130px]">{ownerName}</div>
+                <div className="text-[11px] text-[#8B735B]">Security Admin</div>
+              </div>
             </div>
-            <div className="text-left text-xs leading-tight">
-              <div className="font-semibold text-[#4B3621] truncate max-w-[140px]">{ownerName}</div>
-              <div className="text-[11px] text-[#8B735B]">Security Owner</div>
-            </div>
+
+            {onLogoutAdmin && (
+              <button
+                type="button"
+                onClick={onLogoutAdmin}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#FFFFFF] hover:bg-[#FFEBEE] text-[#C62828] border border-[#E7DED2] hover:border-[#FFCDD2] rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-2xs shrink-0"
+                title="Log Out of Admin Operations Portal"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Log Out</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
