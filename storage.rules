@@ -1,0 +1,77 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ==========================================
+    // AUTHENTICATION & MULTI-TENANT HELPERS
+    // ==========================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Role and company lookup from Firestore user document
+    function getUserData() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isCompanyMember(companyId) {
+      return isAuthenticated() && (
+        (request.auth.token.companyId != null && request.auth.token.companyId == companyId) ||
+        (getUserData().companyId != null && getUserData().companyId == companyId)
+      );
+    }
+
+    function isAdmin(companyId) {
+      return isCompanyMember(companyId) && (
+        request.auth.token.role == 'admin' ||
+        getUserData().role == 'admin'
+      );
+    }
+
+    function isOfficer(companyId) {
+      return isCompanyMember(companyId) && (
+        request.auth.token.role == 'field_officer' ||
+        getUserData().role == 'field_officer'
+      );
+    }
+
+    // File validation: Images <= 15MB, Videos <= 50MB
+    function isValidEvidenceMedia() {
+      return (
+        (request.resource.contentType.matches('image/.*') && request.resource.size < 15 * 1024 * 1024) ||
+        (request.resource.contentType.matches('video/.*') && request.resource.size < 50 * 1024 * 1024)
+      );
+    }
+
+    // ==========================================
+    // EVIDENCE VAULT ACCESS CONTROL
+    // Path: /companies/{companyId}/sites/{siteId}/reports/{reportId}/evidence/{fileName}
+    // ==========================================
+    match /companies/{companyId}/sites/{siteId}/reports/{reportId}/evidence/{fileName} {
+      
+      // READ: Only authenticated members of the specified company can access patrol evidence
+      allow read: if isCompanyMember(companyId);
+
+      // CREATE: Authenticated company officers and admins can upload evidence
+      // Must satisfy content type and file size limits
+      allow create: if isCompanyMember(companyId) &&
+                       isValidEvidenceMedia() &&
+                       (
+                         isAdmin(companyId) ||
+                         isOfficer(companyId)
+                       );
+
+      // UPDATE: Denied - evidence records are immutable audit logs to prevent tampering
+      allow update: if false;
+
+      // DELETE: Only company Admins can purge audit records
+      allow delete: if isAdmin(companyId);
+    }
+
+    // Default: Deny any unmapped or root level operations
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
