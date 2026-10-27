@@ -398,10 +398,9 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-xs font-mono text-[#4B3621] bg-[#FAF7F2] px-3 py-1.5 rounded-lg border border-[#E7DED2] self-start sm:self-auto">
-              <span>Battery: <strong>{activeOfficer.batteryPercent}%</strong></span>
-              <span>·</span>
-              <span className="text-[#1B5E20] font-bold">GPS Linked</span>
+            <div className="flex items-center gap-1.5 text-xs font-mono text-[#1B5E20] bg-[#FAF7F2] px-3 py-1.5 rounded-lg border border-[#E7DED2] self-start sm:self-auto font-bold">
+              <span className="w-2 h-2 rounded-full bg-[#1B5E20] animate-pulse"></span>
+              <span>GPS Linked</span>
             </div>
           </div>
 

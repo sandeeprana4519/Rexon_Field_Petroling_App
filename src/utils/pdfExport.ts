@@ -1,20 +1,322 @@
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import html2canvas from 'html2canvas';
 import { PatrolReport, Site, FieldOfficer } from '../types';
-
-const COFFEE_PRIMARY: [number, number, number] = [111, 78, 55]; // #6F4E37 Coffee Brown
-const DARK_BROWN: [number, number, number] = [75, 54, 33];      // #4B3621 Dark Brown
-const MUTED_BROWN: [number, number, number] = [139, 115, 91];   // #8B735B Muted Brown
-const BG_CREAM: [number, number, number] = [248, 245, 239];     // #FAF7F2 Warm Cream
-const BORDER_COLOR: [number, number, number] = [231, 222, 210]; // #E7DED2
 
 function getTodayStr(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
+function escapeHtml(str: string | undefined | null): string {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 /**
- * 1. Download Site Executive Security Audit PDF
+ * Creates an off-screen container element positioned behind the viewport.
+ */
+function createRenderElement(htmlContent: string, width: number = 794): HTMLDivElement {
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.top = '0';
+  container.style.left = '0';
+  container.style.width = `${width}px`;
+  container.style.zIndex = '-999999';
+  container.style.backgroundColor = '#ffffff';
+  container.style.color = '#4B3621';
+  container.style.fontFamily = "'Inter', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  container.style.boxSizing = 'border-box';
+  container.style.margin = '0';
+  container.style.padding = '0';
+  container.innerHTML = htmlContent;
+  return container;
+}
+
+/**
+ * Renders an HTML element to high-res canvas via html2canvas and exports to jsPDF.
+ * Supports multi-page clean canvas slicing so long tables paginate seamlessly.
+ * Native browser rendering guarantees 100% correct Devanagari / Hindi Unicode text.
+ */
+async function generatePdfFromHtml(
+  element: HTMLElement,
+  filename: string,
+  orientation: 'portrait' | 'landscape' = 'portrait'
+): Promise<boolean> {
+  document.body.appendChild(element);
+  try {
+    if (document.fonts && document.fonts.ready) {
+      try {
+        await document.fonts.ready;
+      } catch {
+        // font ready check fallback
+      }
+    }
+    // Allow layout and styles to finish computing
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const canvas = await html2canvas(element, {
+      scale: 2, // High DPI resolution (crisp text & lines)
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      windowWidth: orientation === 'portrait' ? 794 : 1123
+    });
+
+    const pdf = new jsPDF({
+      orientation,
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const pdfWidth = orientation === 'portrait' ? 210 : 297;
+    const pdfHeight = orientation === 'portrait' ? 297 : 210;
+
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
+    // Compute pixel height corresponding to a single A4 page
+    const pageHeightPx = Math.floor((canvasWidth * pdfHeight) / pdfWidth);
+
+    if (canvasHeight <= pageHeightPx + 8) {
+      // Single Page Document
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const imgHeight = (canvasHeight * pdfWidth) / canvasWidth;
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, imgHeight);
+    } else {
+      // Multi-Page Document: Slice canvas into A4 page sections
+      let renderedHeight = 0;
+      let pageIndex = 0;
+      while (renderedHeight < canvasHeight) {
+        if (pageIndex > 0) {
+          pdf.addPage();
+        }
+        const currentSliceHeight = Math.min(pageHeightPx, canvasHeight - renderedHeight);
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = canvasWidth;
+        pageCanvas.height = currentSliceHeight;
+        const pageCtx = pageCanvas.getContext('2d');
+        if (pageCtx) {
+          pageCtx.fillStyle = '#ffffff';
+          pageCtx.fillRect(0, 0, canvasWidth, currentSliceHeight);
+          pageCtx.drawImage(
+            canvas,
+            0,
+            renderedHeight,
+            canvasWidth,
+            currentSliceHeight,
+            0,
+            0,
+            canvasWidth,
+            currentSliceHeight
+          );
+          const pageData = pageCanvas.toDataURL('image/jpeg', 0.98);
+          const sliceMmHeight = (currentSliceHeight * pdfWidth) / canvasWidth;
+          pdf.addImage(pageData, 'JPEG', 0, 0, pdfWidth, sliceMmHeight);
+        }
+        renderedHeight += currentSliceHeight;
+        pageIndex++;
+      }
+    }
+
+    pdf.save(filename);
+    return true;
+  } catch (err) {
+    console.error('Failed to generate PDF via html2canvas:', err);
+    return false;
+  } finally {
+    if (element.parentNode) {
+      element.parentNode.removeChild(element);
+    }
+  }
+}
+
+/**
+ * 1. Download Dedicated Single Patrol Report Certificate PDF
+ * Renders authentic REXON FIELD PATROL VERIFICATION CERTIFICATE with full Hindi/Unicode fidelity.
+ * Red incidents table is completely omitted as requested.
+ */
+export async function downloadSinglePatrolReportPDF(
+  report: PatrolReport,
+  site?: Site
+): Promise<boolean> {
+  const todayStr = getTodayStr();
+  const siteName = report.siteName || site?.name || 'Authorized Site';
+  const siteCode = site?.code || report.siteId || 'SITE-CODE';
+  const clientName = site?.clientName || 'Authorized Enterprise';
+  const zoneName = report.area || site?.area || 'Assigned Zone';
+  const siteAddress = site?.address || 'Site Premises & Perimeter';
+  const officerName = report.officerName || 'Field Security Officer';
+  const officerBadge = report.officerBadge || 'RF-324';
+  const statusStr = (report.status || 'completed').toUpperCase();
+  const checkInStr = report.actualCheckInTime || report.scheduledTime || '06:00 PM';
+  const gpsAccuracy = report.gpsStatus?.accuracyMeters != null ? `${report.gpsStatus.accuracyMeters}m` : '4.2m';
+  const lat = report.gpsStatus?.lat || 28.5355;
+  const lng = report.gpsStatus?.lng || 77.391;
+  const dev = report.gpsStatus?.distanceDeviationMeters != null ? `${report.gpsStatus.distanceDeviationMeters}m` : '12m';
+
+  const checklistItems = report.checklist || [];
+  const checkRowsHtml = (checklistItems.length > 0 ? checklistItems : [
+    {
+      id: 'default-1',
+      category: 'General',
+      title: 'Main gate and lock security check',
+      checked: true,
+      notes: 'Verified OK. Checkpoint secure and intact.'
+    }
+  ])
+    .map((c, i) => {
+      const isPassed = c.checked;
+      const isIssue = c.status === 'issue_found';
+      const statusBadge = isPassed
+        ? '<span style="color: #1B5E20; font-weight: 700; font-size: 10px;">PASSED / SECURE</span>'
+        : isIssue
+        ? '<span style="color: #B71C1C; font-weight: 700; font-size: 10px;">ISSUE REPORTED</span>'
+        : '<span style="color: #6F4E37; font-weight: 600; font-size: 10px;">UNVERIFIED</span>';
+
+      const noteText = c.notes || c.issueDescription || (isPassed ? 'Verified OK. Checkpoint secure and intact.' : 'Flagged for attention.');
+      const bg = i % 2 === 0 ? '#FFFFFF' : '#FAF7F2';
+
+      return `
+        <tr style="background-color: ${bg}; border-bottom: 1px solid #E7DED2;">
+          <td style="padding: 8px 10px; font-size: 10.5px; font-weight: 600; color: #6F4E37; text-align: center;">#${i + 1}</td>
+          <td style="padding: 8px 10px; font-size: 10.5px; font-weight: 600; color: #4B3621;">${escapeHtml(c.category || 'Inspection')}</td>
+          <td style="padding: 8px 10px; font-size: 10.5px; color: #2A1E14;">${escapeHtml(c.title || 'Security Checkpoint')}</td>
+          <td style="padding: 8px 10px;">${statusBadge}</td>
+          <td style="padding: 8px 10px; font-size: 11px; color: #2A1E14; font-family: 'Noto Sans Devanagari', 'Inter', sans-serif; line-height: 1.45;">
+            ${escapeHtml(noteText)}
+          </td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  const remarks =
+    report.officerRemarks ||
+    (report as any).remarks ||
+    'Conducted physical checkpoint audit. Perimeter secured; gate locks verified.';
+
+  const htmlContent = `
+    <div style="width: 794px; min-height: 1123px; background-color: #FFFFFF; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; font-family: 'Inter', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+      
+      <!-- Top Section -->
+      <div>
+        <!-- Header Banner matching the user certificate screenshot -->
+        <div style="background-color: #FAF7F2; border-bottom: 2px solid #E7DED2; padding: 22px 28px; display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <h1 style="margin: 0 0 3px 0; font-size: 18px; font-weight: 800; color: #2A1E14; letter-spacing: -0.2px;">
+              REXON FIELD PATROL VERIFICATION CERTIFICATE
+            </h1>
+            <div style="font-size: 11px; font-weight: 700; color: #6F4E37; letter-spacing: 0.5px; margin-bottom: 3px; text-transform: uppercase;">
+              OFFICIAL INCIDENT &amp; CHECKPOINT AUDIT LOG
+            </div>
+            <div style="font-size: 9.5px; color: #8B735B; margin-bottom: 3px;">
+              Verified GPS Electronic Geofence Audit &amp; Field Inspection Record
+            </div>
+            <div style="font-size: 10px; font-weight: 700; color: #4B3621;">
+              REPORT CODE: ${escapeHtml(report.reportCode)}
+            </div>
+          </div>
+
+          <div style="text-align: right; font-size: 9.5px; line-height: 1.55; color: #4B3621;">
+            <div><span style="font-weight: 700;">RECORD DATE:</span> ${escapeHtml(report.scheduledDate)}</div>
+            <div><span style="font-weight: 700;">STATUS:</span> <span style="font-weight: 700; color: #1B5E20;">${escapeHtml(statusStr)}</span></div>
+            <div><span style="font-weight: 700;">CHECK-IN:</span> ${escapeHtml(checkInStr)}</div>
+            <div><span style="font-weight: 700;">GPS ACCURACY:</span> ${escapeHtml(gpsAccuracy)}</div>
+          </div>
+        </div>
+
+        <!-- Body Content -->
+        <div style="padding: 20px 28px;">
+          <!-- Site / Facility Info Card -->
+          <div style="background-color: #FFFFFF; border: 1px solid #E7DED2; border-radius: 6px; padding: 12px 16px; margin-bottom: 18px; line-height: 1.5;">
+            <div style="font-size: 12.5px; font-weight: 800; color: #4B3621; margin-bottom: 4px;">
+              Site / Facility: ${escapeHtml(siteName)} (${escapeHtml(siteCode)})
+            </div>
+            <div style="font-size: 10px; color: #6F4E37;">
+              Client Enterprise: <span style="font-weight: 600; color: #4B3621;">${escapeHtml(clientName)}</span> &nbsp;|&nbsp; Zone: <span style="font-weight: 600; color: #4B3621;">${escapeHtml(zoneName)}</span>
+            </div>
+            <div style="font-size: 10px; color: #6F4E37;">
+              Site Address: <span style="color: #4B3621;">${escapeHtml(siteAddress)}</span>
+            </div>
+            <div style="font-size: 10px; color: #6F4E37;">
+              Field Officer: <span style="font-weight: 600; color: #4B3621;">${escapeHtml(officerName)}</span> (Badge: ${escapeHtml(officerBadge)})
+            </div>
+            <div style="font-size: 10px; color: #6F4E37;">
+              GPS Coordinates: <span style="color: #4B3621; font-family: monospace;">${lat}° N, ${lng}° E</span> &nbsp;|&nbsp; Deviation: <span style="color: #4B3621; font-weight: 600;">${dev}</span>
+            </div>
+          </div>
+
+          <!-- Checkpoints Table -->
+          <table style="width: 100%; border-collapse: collapse; border: 1px solid #E7DED2; margin-bottom: 20px; border-radius: 4px; overflow: hidden;">
+            <thead>
+              <tr style="background-color: #6F4E37; color: #FFFFFF;">
+                <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; text-align: center; width: 36px;">#</th>
+                <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; text-align: left; width: 110px;">Category</th>
+                <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; text-align: left; width: 200px;">Security Checkpoint</th>
+                <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; text-align: left; width: 120px;">Audit Result</th>
+                <th style="padding: 8px 10px; font-size: 10px; font-weight: 700; text-align: left;">Officer Field Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${checkRowsHtml}
+            </tbody>
+          </table>
+
+          <!-- Officer Patrol Remarks & Observations -->
+          <div style="background-color: #FAF7F2; border: 1px solid #E7DED2; border-radius: 6px; padding: 12px 16px; margin-bottom: 24px;">
+            <div style="font-size: 10.5px; font-weight: 700; color: #4B3621; letter-spacing: 0.4px; margin-bottom: 5px; text-transform: uppercase;">
+              OFFICER PATROL REMARKS &amp; OBSERVATIONS
+            </div>
+            <div style="font-size: 10.5px; color: #4B3621; font-family: 'Noto Sans Devanagari', 'Inter', sans-serif; line-height: 1.5;">
+              <span style="font-weight: 600; color: #6F4E37;">Remarks:</span> ${escapeHtml(remarks)}
+            </div>
+          </div>
+
+          <!-- Official Signatures -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 32px; padding: 0 4px;">
+            <div style="width: 220px;">
+              <div style="border-top: 1.5px solid #8B735B; padding-top: 6px;">
+                <div style="font-size: 10.5px; font-weight: 700; color: #4B3621;">Field Officer: ${escapeHtml(officerName)}</div>
+                <div style="font-size: 9px; color: #8B735B;">Badge: ${escapeHtml(officerBadge)} · Signed Electronically</div>
+              </div>
+            </div>
+
+            <div style="width: 220px; text-align: right;">
+              <div style="border-top: 1.5px solid #8B735B; padding-top: 6px;">
+                <div style="font-size: 10.5px; font-weight: 700; color: #4B3621;">Central Operations Controller</div>
+                <div style="font-size: 9px; color: #8B735B;">REXON 24/7 Operations Desk Verification</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer matching certificate design -->
+      <div style="border-top: 1px solid #E7DED2; padding: 12px 28px; display: flex; justify-content: space-between; align-items: center; background-color: #FFFFFF;">
+        <div style="font-size: 8.5px; color: #8B735B;">
+          REXON Security Patrol Operations System · ${escapeHtml(siteName)} · Report #${escapeHtml(report.reportCode)} · Page 1 of 1
+        </div>
+        <div style="font-size: 8.5px; font-weight: 700; color: #8B735B; letter-spacing: 0.5px;">
+          OFFICIALLY CERTIFIED PATROL AUDIT
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  const container = createRenderElement(htmlContent, 794);
+  const cleanReportCode = report.reportCode ? report.reportCode.replace(/[^a-zA-Z0-9_-]/g, '_') : 'PATROL';
+  const filename = `REXON_Patrol_Report_${cleanReportCode}_${todayStr}.pdf`;
+
+  return generatePdfFromHtml(container, filename, 'portrait');
+}
+
+/**
+ * 2. Download Site Executive Security Audit PDF
  */
 export async function downloadSiteAuditPDF(
   site: Site,
@@ -22,214 +324,174 @@ export async function downloadSiteAuditPDF(
   timeframeLabel: string,
   kpis?: { totalPatrols?: number; completedCount?: number; compliancePct?: number; incidentCount?: number }
 ): Promise<boolean> {
-  try {
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
+  const todayStr = getTodayStr();
+  const totalPatrols = kpis?.totalPatrols ?? reports.length;
+  const completedCount = kpis?.completedCount ?? reports.filter((r) => r.status === 'completed').length;
+  const totalIncidents = kpis?.incidentCount ?? reports.reduce((acc, r) => acc + (r.incidents?.length || r.incidentCount || 0), 0);
+
+  let totalCheckpoints = 0;
+  let verifiedCheckpoints = 0;
+  reports.forEach((r) => {
+    (r.checklist || []).forEach((c) => {
+      totalCheckpoints++;
+      if (c.checked) verifiedCheckpoints++;
     });
+  });
+  const compliancePct = kpis?.compliancePct ?? (totalCheckpoints > 0 ? Math.round((verifiedCheckpoints / totalCheckpoints) * 100) : 100);
 
-    const todayStr = getTodayStr();
-    const totalPatrols = kpis?.totalPatrols ?? reports.length;
-    const completedCount = kpis?.completedCount ?? reports.filter((r) => r.status === 'completed').length;
-    const totalIncidents = kpis?.incidentCount ?? reports.reduce((acc, r) => acc + (r.incidents?.length || r.incidentCount || 0), 0);
+  const tableRowsHtml = (reports.length > 0 ? reports : []).map((r, i) => {
+    const v = (r.checklist || []).filter((c) => c.checked).length;
+    const t = (r.checklist || []).length;
+    const dev = r.gpsStatus?.distanceDeviationMeters != null ? `${r.gpsStatus.distanceDeviationMeters}m` : '0m';
+    const statusText = (r.status || 'COMPLETED').toUpperCase();
+    const verdict = r.incidents && r.incidents.length > 0 ? `Incident (${r.incidents.length})` : 'All Clear';
+    const checkin = r.actualCheckInTime || r.scheduledTime || '-';
+    const bg = i % 2 === 0 ? '#FFFFFF' : '#FAF7F2';
 
-    let totalCheckpoints = 0;
-    let verifiedCheckpoints = 0;
-    reports.forEach((r) => {
-      (r.checklist || []).forEach((c) => {
-        totalCheckpoints++;
-        if (c.checked) verifiedCheckpoints++;
-      });
-    });
-    const compliancePct = kpis?.compliancePct ?? (totalCheckpoints > 0 ? Math.round((verifiedCheckpoints / totalCheckpoints) * 100) : 100);
+    return `
+      <tr style="background-color: ${bg}; border-bottom: 1px solid #E7DED2;">
+        <td style="padding: 7px 10px; font-size: 10px; font-weight: 700; color: #4B3621;">${escapeHtml(r.reportCode || 'LOG')}</td>
+        <td style="padding: 7px 10px; font-size: 9.5px; color: #4B3621;">${escapeHtml(r.scheduledDate)}<br/><span style="color: #8B735B;">${escapeHtml(checkin)}</span></td>
+        <td style="padding: 7px 10px; font-size: 9.5px; color: #4B3621;">${escapeHtml(r.officerName)}<br/><span style="color: #8B735B;">(${escapeHtml(r.officerBadge || 'RF')})</span></td>
+        <td style="padding: 7px 10px; font-size: 9.5px; color: #1B5E20; font-weight: 600;">${v}/${t} pass</td>
+        <td style="padding: 7px 10px; font-size: 9.5px; color: #6F4E37;">${dev} dev</td>
+        <td style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; color: #1B5E20;">${escapeHtml(statusText)}</td>
+        <td style="padding: 7px 10px; font-size: 9.5px; font-weight: 600; color: ${r.incidents && r.incidents.length > 0 ? '#C62828' : '#1B5E20'};">${escapeHtml(verdict)}</td>
+      </tr>
+    `;
+  }).join('');
 
-    // Header Banner
-    doc.setFillColor(BG_CREAM[0], BG_CREAM[1], BG_CREAM[2]);
-    doc.rect(0, 0, 210, 36, 'F');
+  const htmlContent = `
+    <div style="width: 794px; min-height: 1123px; background-color: #FFFFFF; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; font-family: 'Inter', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+      
+      <div>
+        <!-- Header Banner -->
+        <div style="background-color: #FAF7F2; border-bottom: 2px solid #E7DED2; padding: 22px 28px; display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 800; color: #2A1E14;">
+              REXON SECURITY &amp; FACILITY SERVICES
+            </h1>
+            <div style="font-size: 11px; font-weight: 700; color: #6F4E37; letter-spacing: 0.5px; margin-bottom: 3px; text-transform: uppercase;">
+              OFFICIAL SITE PATROL AUDIT &amp; VERIFICATION REPORT
+            </div>
+            <div style="font-size: 9.5px; color: #8B735B; margin-bottom: 2px;">
+              Verified GPS Geofence Check-in, Guard Presence &amp; Incident Ledger
+            </div>
+            <div style="font-size: 9.5px; font-weight: 700; color: #4B3621;">
+              TIMEFRAME: ${escapeHtml(timeframeLabel.toUpperCase())}
+            </div>
+          </div>
 
-    // Title & Brand
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(17);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text('REXON SECURITY & FACILITY SERVICES', 14, 13);
+          <div style="text-align: right; font-size: 9px; line-height: 1.55; color: #4B3621;">
+            <div><span style="font-weight: 700;">AUDIT ID:</span> REX-${escapeHtml(site.code || 'SITE')}-${todayStr}</div>
+            <div><span style="font-weight: 700;">STATUS:</span> <span style="color: #1B5E20; font-weight: 700;">OFFICIALLY AUDITED</span></div>
+            <div><span style="font-weight: 700;">DATE ISSUED:</span> ${todayStr}</div>
+            <div><span style="font-weight: 700;">GEOFENCE:</span> ${site.geofenceRadiusMeters || 50}m RADIUS</div>
+          </div>
+        </div>
 
-    doc.setFontSize(10.5);
-    doc.setTextColor(COFFEE_PRIMARY[0], COFFEE_PRIMARY[1], COFFEE_PRIMARY[2]);
-    doc.text('OFFICIAL SITE PATROL AUDIT & VERIFICATION REPORT', 14, 20);
+        <div style="padding: 20px 28px;">
+          <!-- Site Info Box -->
+          <div style="background-color: #FFFFFF; border: 1px solid #E7DED2; border-radius: 6px; padding: 12px 16px; margin-bottom: 14px; line-height: 1.5;">
+            <div style="font-size: 12.5px; font-weight: 800; color: #4B3621; margin-bottom: 4px;">
+              Facility / Site: ${escapeHtml(site.name)} (${escapeHtml(site.code || 'SITE')})
+            </div>
+            <div style="font-size: 10px; color: #6F4E37;">
+              Client Enterprise: <span style="font-weight: 600; color: #4B3621;">${escapeHtml(site.clientName || 'Contract Enterprise')}</span>
+            </div>
+            <div style="font-size: 10px; color: #6F4E37;">
+              Address: <span style="color: #4B3621;">${escapeHtml(site.address)}</span>
+            </div>
+            <div style="font-size: 10px; color: #6F4E37;">
+              Facility Contact: ${escapeHtml(site.contactPerson)} | Phone: ${escapeHtml(site.contactPhone)} | Zone: ${escapeHtml(site.area)}
+            </div>
+            <div style="font-size: 10px; color: #6F4E37;">
+              Patrol Frequency: ${escapeHtml(site.patrolFrequency || '2x per shift')} | Security Level: ${escapeHtml(site.securityStatus || 'Normal')}
+            </div>
+          </div>
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-    doc.text('Verified GPS Geofence Check-in, Guard Presence & Incident Ledger', 14, 26);
-    doc.text(`TIMEFRAME: ${timeframeLabel.toUpperCase()}`, 14, 31);
+          <!-- KPI Metrics Row -->
+          <div style="background-color: #FAF7F2; border: 1px solid #E7DED2; border-radius: 6px; padding: 12px 16px; margin-bottom: 18px; display: flex; justify-content: space-between;">
+            <div style="text-align: center; flex: 1;">
+              <div style="font-size: 8px; font-weight: 700; color: #8B735B; text-transform: uppercase;">TOTAL PATROLS</div>
+              <div style="font-size: 14px; font-weight: 800; color: #4B3621; margin-top: 2px;">${totalPatrols}</div>
+            </div>
+            <div style="text-align: center; flex: 1; border-left: 1px solid #E7DED2;">
+              <div style="font-size: 8px; font-weight: 700; color: #8B735B; text-transform: uppercase;">COMPLETED AUDITS</div>
+              <div style="font-size: 14px; font-weight: 800; color: #4B3621; margin-top: 2px;">${completedCount}</div>
+            </div>
+            <div style="text-align: center; flex: 1; border-left: 1px solid #E7DED2;">
+              <div style="font-size: 8px; font-weight: 700; color: #8B735B; text-transform: uppercase;">COMPLIANCE RATE</div>
+              <div style="font-size: 14px; font-weight: 800; color: #1B5E20; margin-top: 2px;">${compliancePct}%</div>
+            </div>
+            <div style="text-align: center; flex: 1; border-left: 1px solid #E7DED2;">
+              <div style="font-size: 8px; font-weight: 700; color: #8B735B; text-transform: uppercase;">INCIDENTS</div>
+              <div style="font-size: 14px; font-weight: 800; color: ${totalIncidents > 0 ? '#C62828' : '#1B5E20'}; margin-top: 2px;">
+                ${totalIncidents > 0 ? `${totalIncidents} Item(s)` : '0 Clear'}
+              </div>
+            </div>
+          </div>
 
-    // Top Right Stamp
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text(`AUDIT ID: REX-${site.code || 'SITE'}-${todayStr}`, 196, 13, { align: 'right' });
-    doc.text(`STATUS: OFFICIALLY AUDITED`, 196, 18, { align: 'right' });
-    doc.text(`DATE ISSUED: ${todayStr}`, 196, 23, { align: 'right' });
-    doc.text(`GEOFENCE: ${site.geofenceRadiusMeters || 50}m RADIUS`, 196, 28, { align: 'right' });
+          <!-- Patrol Log Table -->
+          <table style="width: 100%; border-collapse: collapse; border: 1px solid #E7DED2; margin-bottom: 24px; border-radius: 4px; overflow: hidden;">
+            <thead>
+              <tr style="background-color: #6F4E37; color: #FFFFFF;">
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Report Code</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Date / Time</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Field Officer</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Checkpoints</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">GPS Geofence</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Status</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRowsHtml || '<tr><td colspan="7" style="padding: 12px; text-align: center; color: #8B735B; font-size: 10px;">No patrols recorded for period</td></tr>'}
+            </tbody>
+          </table>
 
-    // Site & Client Meta Box
-    doc.setDrawColor(BORDER_COLOR[0], BORDER_COLOR[1], BORDER_COLOR[2]);
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(14, 40, 182, 30, 2, 2, 'FD');
+          <!-- Signatures -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 28px; padding: 0 4px;">
+            <div style="width: 220px;">
+              <div style="border-top: 1.5px solid #8B735B; padding-top: 6px;">
+                <div style="font-size: 10px; font-weight: 700; color: #4B3621;">REXON Operations Controller</div>
+                <div style="font-size: 8.5px; color: #8B735B;">Authorized Signatory &amp; Seal</div>
+              </div>
+            </div>
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10.5);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text(`Facility / Site: ${site.name} (${site.code})`, 18, 47);
+            <div style="width: 220px; text-align: right;">
+              <div style="border-top: 1.5px solid #8B735B; padding-top: 6px;">
+                <div style="font-size: 10px; font-weight: 700; color: #4B3621;">Client Facility Representative</div>
+                <div style="font-size: 8.5px; color: #8B735B;">${escapeHtml(site.clientName || 'Facility Manager')}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-    doc.text(`Client Enterprise: ${site.clientName || 'Contract Enterprise'}`, 18, 53);
-    doc.text(`Address: ${site.address}`, 18, 58);
-    doc.text(
-      `Facility Contact: ${site.contactPerson} | Phone: ${site.contactPhone} | Zone: ${site.area}`,
-      18,
-      63
-    );
-    doc.text(
-      `Patrol Frequency: ${site.patrolFrequency || '2x per shift'} | Security Level: ${site.securityStatus || 'Normal'}`,
-      18,
-      68
-    );
+      <!-- Footer -->
+      <div style="border-top: 1px solid #E7DED2; padding: 12px 28px; display: flex; justify-content: space-between; align-items: center; background-color: #FFFFFF;">
+        <div style="font-size: 8.5px; color: #8B735B;">
+          REXON Security Patrol Operations System · ${escapeHtml(site.name)} (${escapeHtml(site.code || 'SITE')}) · Confidential Audit
+        </div>
+        <div style="font-size: 8.5px; font-weight: 700; color: #8B735B; letter-spacing: 0.5px;">
+          CONFIDENTIAL &amp; CERTIFIED AUDIT
+        </div>
+      </div>
 
-    // KPI Metrics Bar
-    doc.setFillColor(BG_CREAM[0], BG_CREAM[1], BG_CREAM[2]);
-    doc.roundedRect(14, 74, 182, 18, 2, 2, 'FD');
+    </div>
+  `;
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-    doc.text('TOTAL PATROLS', 22, 80);
-    doc.text('COMPLETED AUDITS', 68, 80);
-    doc.text('CHECKPOINTS COMPLIANCE', 115, 80);
-    doc.text('INCIDENTS RECORDED', 162, 80);
+  const container = createRenderElement(htmlContent, 794);
+  const cleanSiteName = site.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const cleanTime = timeframeLabel.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const filename = `REXON_Site_Audit_${cleanSiteName}_${cleanTime}_${todayStr}.pdf`;
 
-    doc.setFontSize(10.5);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text(`${totalPatrols}`, 22, 88);
-    doc.text(`${completedCount}`, 68, 88);
-
-    doc.setTextColor(27, 94, 32);
-    doc.text(`${compliancePct}% (${verifiedCheckpoints}/${totalCheckpoints || verifiedCheckpoints})`, 115, 88);
-
-    if (totalIncidents > 0) {
-      doc.setTextColor(198, 40, 40);
-      doc.text(`${totalIncidents} Incident(s)`, 162, 88);
-    } else {
-      doc.setTextColor(27, 94, 32);
-      doc.text('0 (All Clear)', 162, 88);
-    }
-
-    // Table of Reports
-    const tableRows = reports.map((r) => {
-      const v = (r.checklist || []).filter((c) => c.checked).length;
-      const t = (r.checklist || []).length;
-      const dev = r.gpsStatus?.distanceDeviationMeters != null ? `${r.gpsStatus.distanceDeviationMeters}m` : '0m';
-      const statusText = r.status.toUpperCase();
-      const verdict = r.incidents && r.incidents.length > 0 ? `Incident (${r.incidents.length})` : 'All Clear';
-      const checkin = r.actualCheckInTime || r.scheduledTime || '-';
-
-      return [
-        r.reportCode || 'LOG',
-        `${r.scheduledDate}\n${checkin}`,
-        `${r.officerName}\n(${r.officerBadge || 'RF'})`,
-        `${v}/${t} pass`,
-        `${dev} dev`,
-        statusText,
-        verdict
-      ];
-    });
-
-    autoTable(doc, {
-      head: [['Report Code', 'Date / Time', 'Field Officer', 'Checkpoints', 'GPS Geofence', 'Status', 'Verdict']],
-      body: tableRows.length > 0 ? tableRows : [['-', 'No patrols recorded for period', '-', '-', '-', '-', '-']],
-      startY: 96,
-      theme: 'grid',
-      headStyles: {
-        fillColor: COFFEE_PRIMARY,
-        textColor: [255, 255, 255],
-        fontSize: 8,
-        fontStyle: 'bold',
-        halign: 'left'
-      },
-      bodyStyles: {
-        fontSize: 7.5,
-        textColor: DARK_BROWN,
-        lineColor: BORDER_COLOR
-      },
-      alternateRowStyles: {
-        fillColor: BG_CREAM
-      },
-      margin: { left: 14, right: 14 },
-      styles: {
-        overflow: 'linebreak',
-        cellPadding: 2
-      },
-      didDrawPage: (data) => {
-        const pageCount = doc.getNumberOfPages();
-        doc.setFontSize(7);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-        doc.text(
-          `REXON Security Patrol Operations System · ${site.name} (${site.code}) · Page ${data.pageNumber} of ${pageCount}`,
-          14,
-          288
-        );
-        doc.text('CONFIDENTIAL & CERTIFIED AUDIT', 196, 288, { align: 'right' });
-      }
-    });
-
-    // Add Signature Box on final page
-    const finalY = (doc as any).lastAutoTable?.finalY || 200;
-    const signY = finalY + 12 < 265 ? finalY + 12 : 250;
-
-    if (signY < 270) {
-      doc.setDrawColor(BORDER_COLOR[0], BORDER_COLOR[1], BORDER_COLOR[2]);
-      doc.setLineWidth(0.5);
-
-      // Left sign
-      doc.line(16, signY + 14, 76, signY + 14);
-      doc.setFontSize(7.5);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-      doc.text('REXON Operations Controller', 16, signY + 18);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.5);
-      doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-      doc.text('Authorized Signatory & Seal', 16, signY + 22);
-
-      // Right sign
-      doc.line(134, signY + 14, 194, signY + 14);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-      doc.text('Client Facility Representative', 134, signY + 18);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.5);
-      doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-      doc.text(`${site.clientName || 'Facility Manager'}`, 134, signY + 22);
-    }
-
-    const cleanSiteName = site.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const cleanTime = timeframeLabel.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const filename = `REXON_Site_Audit_${cleanSiteName}_${cleanTime}_${todayStr}.pdf`;
-    doc.save(filename);
-    return true;
-  } catch (err) {
-    console.error('Failed to generate Site Audit PDF:', err);
-    return false;
-  }
+  return generatePdfFromHtml(container, filename, 'portrait');
 }
 
 /**
- * 2. Download Officer Patrol Audit PDF
+ * 3. Download Officer Patrol Attendance & Performance Audit PDF
  */
 export async function downloadOfficerPatrolAuditPDF(
   officer: FieldOfficer,
@@ -237,325 +499,153 @@ export async function downloadOfficerPatrolAuditPDF(
   timeframeLabel: string,
   kpis?: { totalPatrols?: number; completedCount?: number; onTimePct?: number }
 ): Promise<boolean> {
-  try {
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    });
+  const todayStr = getTodayStr();
+  const totalPatrols = kpis?.totalPatrols ?? reports.length;
+  const completedCount = kpis?.completedCount ?? reports.filter((r) => r.status === 'completed').length;
+  const onTimePct = kpis?.onTimePct ?? (totalPatrols > 0 ? Math.round((completedCount / totalPatrols) * 100) : 100);
 
-    const todayStr = getTodayStr();
-    const totalPatrols = kpis?.totalPatrols ?? reports.length;
-    const completedCount = kpis?.completedCount ?? reports.filter((r) => r.status === 'completed').length;
-    const onTimePct = kpis?.onTimePct ?? (totalPatrols > 0 ? Math.round((completedCount / totalPatrols) * 100) : 100);
+  const tableRowsHtml = (reports.length > 0 ? reports : []).map((r, i) => {
+    const v = (r.checklist || []).filter((c) => c.checked).length;
+    const t = (r.checklist || []).length;
+    const dev = r.gpsStatus?.distanceDeviationMeters != null ? `${r.gpsStatus.distanceDeviationMeters}m` : '5m';
+    const checkin = r.actualCheckInTime || r.scheduledTime || '-';
+    const verdict = r.incidents && r.incidents.length > 0 ? `Incident (${r.incidents.length})` : 'All Clear';
+    const bg = i % 2 === 0 ? '#FFFFFF' : '#FAF7F2';
 
-    // Header Banner
-    doc.setFillColor(BG_CREAM[0], BG_CREAM[1], BG_CREAM[2]);
-    doc.rect(0, 0, 210, 36, 'F');
+    return `
+      <tr style="background-color: ${bg}; border-bottom: 1px solid #E7DED2;">
+        <td style="padding: 7px 10px; font-size: 10px; font-weight: 700; color: #4B3621;">${escapeHtml(r.reportCode || 'LOG')}</td>
+        <td style="padding: 7px 10px; font-size: 9.5px; color: #4B3621;">${escapeHtml(r.siteName || 'Facility')}</td>
+        <td style="padding: 7px 10px; font-size: 9.5px; color: #4B3621;">${escapeHtml(r.scheduledDate)}<br/><span style="color: #8B735B;">${escapeHtml(checkin)}</span></td>
+        <td style="padding: 7px 10px; font-size: 9.5px; color: #1B5E20; font-weight: 600;">${v}/${t} points</td>
+        <td style="padding: 7px 10px; font-size: 9.5px; color: #6F4E37;">${dev} dev</td>
+        <td style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; color: #1B5E20;">${escapeHtml((r.status || 'COMPLETED').toUpperCase())}</td>
+        <td style="padding: 7px 10px; font-size: 9.5px; font-weight: 600; color: ${r.incidents && r.incidents.length > 0 ? '#C62828' : '#1B5E20'};">${escapeHtml(verdict)}</td>
+      </tr>
+    `;
+  }).join('');
 
-    // Brand
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(17);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text('REXON SECURITY SERVICES', 14, 13);
+  const htmlContent = `
+    <div style="width: 794px; min-height: 1123px; background-color: #FFFFFF; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; font-family: 'Inter', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+      
+      <div>
+        <!-- Header Banner -->
+        <div style="background-color: #FAF7F2; border-bottom: 2px solid #E7DED2; padding: 22px 28px; display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 800; color: #2A1E14;">
+              REXON SECURITY SERVICES
+            </h1>
+            <div style="font-size: 11px; font-weight: 700; color: #6F4E37; letter-spacing: 0.5px; margin-bottom: 3px; text-transform: uppercase;">
+              OFFICER PATROL ATTENDANCE &amp; PERFORMANCE AUDIT
+            </div>
+            <div style="font-size: 9.5px; color: #8B735B; margin-bottom: 2px;">
+              Official Verified Officer Duty Log &amp; Checkpoint Execution Sheet
+            </div>
+            <div style="font-size: 9.5px; font-weight: 700; color: #4B3621;">
+              AUDIT PERIOD: ${escapeHtml(timeframeLabel.toUpperCase())}
+            </div>
+          </div>
 
-    doc.setFontSize(10.5);
-    doc.setTextColor(COFFEE_PRIMARY[0], COFFEE_PRIMARY[1], COFFEE_PRIMARY[2]);
-    doc.text('OFFICER PATROL ATTENDANCE & PERFORMANCE AUDIT', 14, 20);
+          <div style="text-align: right; font-size: 9px; line-height: 1.55; color: #4B3621;">
+            <div><span style="font-weight: 700;">OFFICER ID:</span> ${escapeHtml(officer.employeeId || officer.badgeNumber)}</div>
+            <div><span style="font-weight: 700;">STATUS:</span> <span style="color: #1B5E20; font-weight: 700;">ACTIVE ON DUTY</span></div>
+            <div><span style="font-weight: 700;">GENERATED:</span> ${todayStr}</div>
+          </div>
+        </div>
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-    doc.text(`Official Verified Officer Duty Log & Checkpoint Execution Sheet`, 14, 26);
-    doc.text(`AUDIT PERIOD: ${timeframeLabel.toUpperCase()}`, 14, 31);
+        <div style="padding: 20px 28px;">
+          <!-- Officer Info Box -->
+          <div style="background-color: #FFFFFF; border: 1px solid #E7DED2; border-radius: 6px; padding: 12px 16px; margin-bottom: 14px; line-height: 1.5;">
+            <div style="font-size: 12.5px; font-weight: 800; color: #4B3621; margin-bottom: 4px;">
+              Officer: ${escapeHtml(officer.name)} (Badge: ${escapeHtml(officer.badgeNumber)})
+            </div>
+            <div style="font-size: 10px; color: #6F4E37;">
+              Designation: Senior Field Security Officer | Shift: ${escapeHtml(officer.shift || 'Day')} Shift
+            </div>
+            <div style="font-size: 10px; color: #6F4E37;">
+              Assigned Zone: ${escapeHtml(officer.area || 'Central Zone')} | Contact: ${escapeHtml(officer.phone || 'N/A')}
+            </div>
+            <div style="font-size: 10px; color: #6F4E37;">
+              Email: ${escapeHtml(officer.email || 'N/A')} | Verified Check-in Today: ${escapeHtml(officer.lastCheckInTime || 'On Duty')}
+            </div>
+          </div>
 
-    // Right Stamp
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text(`OFFICER ID: ${officer.employeeId || officer.badgeNumber}`, 196, 13, { align: 'right' });
-    doc.text(`STATUS: ACTIVE ON DUTY`, 196, 18, { align: 'right' });
-    doc.text(`GENERATED: ${todayStr}`, 196, 23, { align: 'right' });
+          <!-- KPI Metrics Row -->
+          <div style="background-color: #FAF7F2; border: 1px solid #E7DED2; border-radius: 6px; padding: 12px 16px; margin-bottom: 18px; display: flex; justify-content: space-between;">
+            <div style="text-align: center; flex: 1;">
+              <div style="font-size: 8px; font-weight: 700; color: #8B735B; text-transform: uppercase;">TOTAL ASSIGNED</div>
+              <div style="font-size: 14px; font-weight: 800; color: #4B3621; margin-top: 2px;">${totalPatrols}</div>
+            </div>
+            <div style="text-align: center; flex: 1; border-left: 1px solid #E7DED2;">
+              <div style="font-size: 8px; font-weight: 700; color: #8B735B; text-transform: uppercase;">COMPLETED</div>
+              <div style="font-size: 14px; font-weight: 800; color: #4B3621; margin-top: 2px;">${completedCount}</div>
+            </div>
+            <div style="text-align: center; flex: 1; border-left: 1px solid #E7DED2;">
+              <div style="font-size: 8px; font-weight: 700; color: #8B735B; text-transform: uppercase;">COMPLIANCE RATE</div>
+              <div style="font-size: 14px; font-weight: 800; color: #1B5E20; margin-top: 2px;">${onTimePct}%</div>
+            </div>
+            <div style="text-align: center; flex: 1; border-left: 1px solid #E7DED2;">
+              <div style="font-size: 8px; font-weight: 700; color: #8B735B; text-transform: uppercase;">RATING</div>
+              <div style="font-size: 14px; font-weight: 800; color: #1B5E20; margin-top: 2px;">Grade A (100%)</div>
+            </div>
+          </div>
 
-    // Officer Info Box
-    doc.setDrawColor(BORDER_COLOR[0], BORDER_COLOR[1], BORDER_COLOR[2]);
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(14, 40, 182, 28, 2, 2, 'FD');
+          <!-- Table -->
+          <table style="width: 100%; border-collapse: collapse; border: 1px solid #E7DED2; margin-bottom: 24px; border-radius: 4px; overflow: hidden;">
+            <thead>
+              <tr style="background-color: #6F4E37; color: #FFFFFF;">
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Report Code</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Facility / Site</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Date &amp; Time</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Checkpoints</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">GPS Deviation</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Status</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRowsHtml || '<tr><td colspan="7" style="padding: 12px; text-align: center; color: #8B735B; font-size: 10px;">No patrols logged for officer in period</td></tr>'}
+            </tbody>
+          </table>
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10.5);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text(`Officer: ${officer.name} (Badge: ${officer.badgeNumber})`, 18, 47);
+          <!-- Signatures -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 28px; padding: 0 4px;">
+            <div style="width: 220px;">
+              <div style="border-top: 1.5px solid #8B735B; padding-top: 6px;">
+                <div style="font-size: 10px; font-weight: 700; color: #4B3621;">Field Officer: ${escapeHtml(officer.name)}</div>
+                <div style="font-size: 8.5px; color: #8B735B;">Badge: ${escapeHtml(officer.badgeNumber)} · Duty Verified</div>
+              </div>
+            </div>
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-    doc.text(`Designation: Senior Field Security Officer | Shift: ${officer.shift || 'Day'} Shift`, 18, 53);
-    doc.text(`Assigned Zone: ${officer.area || 'Central Zone'} | Contact: ${officer.phone || 'N/A'}`, 18, 58);
-    doc.text(`Email: ${officer.email || 'N/A'} | Verified Check-in Today: ${officer.lastCheckInTime || 'On Duty'}`, 18, 63);
+            <div style="width: 220px; text-align: right;">
+              <div style="border-top: 1.5px solid #8B735B; padding-top: 6px;">
+                <div style="font-size: 10px; font-weight: 700; color: #4B3621;">REXON Duty Controller</div>
+                <div style="font-size: 8.5px; color: #8B735B;">24/7 Operations Desk Sign-off</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-    // KPI Metrics Bar
-    doc.setFillColor(BG_CREAM[0], BG_CREAM[1], BG_CREAM[2]);
-    doc.roundedRect(14, 72, 182, 18, 2, 2, 'FD');
+      <!-- Footer -->
+      <div style="border-top: 1px solid #E7DED2; padding: 12px 28px; display: flex; justify-content: space-between; align-items: center; background-color: #FFFFFF;">
+        <div style="font-size: 8.5px; color: #8B735B;">
+          REXON Security Patrol Operations System · Officer ${escapeHtml(officer.name)} · Performance Audit
+        </div>
+        <div style="font-size: 8.5px; font-weight: 700; color: #8B735B; letter-spacing: 0.5px;">
+          CERTIFIED OFFICER LOG
+        </div>
+      </div>
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-    doc.text('TOTAL ASSIGNED PATROLS', 22, 78);
-    doc.text('SUCCESSFULLY COMPLETED', 72, 78);
-    doc.text('COMPLIANCE RATE', 125, 78);
-    doc.text('PUNCTUALITY RATING', 165, 78);
+    </div>
+  `;
 
-    doc.setFontSize(10.5);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text(`${totalPatrols}`, 22, 86);
-    doc.text(`${completedCount}`, 72, 86);
+  const container = createRenderElement(htmlContent, 794);
+  const cleanName = officer.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const cleanTime = timeframeLabel.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const filename = `REXON_Officer_Patrol_Audit_${cleanName}_${cleanTime}_${todayStr}.pdf`;
 
-    doc.setTextColor(27, 94, 32);
-    doc.text(`${onTimePct}%`, 125, 86);
-    doc.text('Grade A (100%)', 165, 86);
-
-    // Table of Officer Patrols
-    const tableRows = reports.map((r) => {
-      const v = (r.checklist || []).filter((c) => c.checked).length;
-      const t = (r.checklist || []).length;
-      const dev = r.gpsStatus?.distanceDeviationMeters != null ? `${r.gpsStatus.distanceDeviationMeters}m` : '5m';
-      const checkin = r.actualCheckInTime || r.scheduledTime || '-';
-      const verdict = r.incidents && r.incidents.length > 0 ? `Incident (${r.incidents.length})` : 'All Clear';
-
-      return [
-        r.reportCode || 'LOG',
-        r.siteName || 'Site',
-        `${r.scheduledDate}\n${checkin}`,
-        `${v}/${t} points`,
-        `${dev} dev`,
-        r.status.toUpperCase(),
-        verdict
-      ];
-    });
-
-    autoTable(doc, {
-      head: [['Report Code', 'Facility / Site', 'Date & Time', 'Checkpoints', 'GPS Deviation', 'Status', 'Verdict']],
-      body: tableRows.length > 0 ? tableRows : [['-', 'No patrols logged for officer in period', '-', '-', '-', '-', '-']],
-      startY: 94,
-      theme: 'grid',
-      headStyles: {
-        fillColor: COFFEE_PRIMARY,
-        textColor: [255, 255, 255],
-        fontSize: 8,
-        fontStyle: 'bold',
-        halign: 'left'
-      },
-      bodyStyles: {
-        fontSize: 7.5,
-        textColor: DARK_BROWN,
-        lineColor: BORDER_COLOR
-      },
-      alternateRowStyles: {
-        fillColor: BG_CREAM
-      },
-      margin: { left: 14, right: 14 },
-      styles: {
-        overflow: 'linebreak',
-        cellPadding: 2
-      },
-      didDrawPage: (data) => {
-        const pageCount = doc.getNumberOfPages();
-        doc.setFontSize(7);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-        doc.text(
-          `REXON Security Patrol Operations System · Officer ${officer.name} · Page ${data.pageNumber} of ${pageCount}`,
-          14,
-          288
-        );
-        doc.text('CERTIFIED OFFICER LOG', 196, 288, { align: 'right' });
-      }
-    });
-
-    const cleanName = officer.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const cleanTime = timeframeLabel.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const filename = `REXON_Officer_Patrol_Audit_${cleanName}_${cleanTime}_${todayStr}.pdf`;
-    doc.save(filename);
-    return true;
-  } catch (err) {
-    console.error('Failed to generate Officer Audit PDF:', err);
-    return false;
-  }
-}
-
-/**
- * 3. Download Dedicated Single Patrol Report Certificate PDF
- */
-export async function downloadSinglePatrolReportPDF(
-  report: PatrolReport,
-  site?: Site
-): Promise<boolean> {
-  try {
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    });
-
-    const todayStr = getTodayStr();
-
-    // Header Banner
-    doc.setFillColor(BG_CREAM[0], BG_CREAM[1], BG_CREAM[2]);
-    doc.rect(0, 0, 210, 36, 'F');
-
-    // Title
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text('REXON FIELD PATROL VERIFICATION CERTIFICATE', 14, 13);
-
-    doc.setFontSize(10);
-    doc.setTextColor(COFFEE_PRIMARY[0], COFFEE_PRIMARY[1], COFFEE_PRIMARY[2]);
-    doc.text('OFFICIAL INCIDENT & CHECKPOINT AUDIT LOG', 14, 20);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-    doc.text('Verified GPS Electronic Geofence Audit & Field Inspection Record', 14, 26);
-    doc.text(`REPORT CODE: ${report.reportCode}`, 14, 31);
-
-    // Top Right Stamp
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text(`RECORD DATE: ${report.scheduledDate}`, 196, 13, { align: 'right' });
-    doc.text(`STATUS: ${report.status.toUpperCase()}`, 196, 18, { align: 'right' });
-    doc.text(`CHECK-IN: ${report.actualCheckInTime || report.scheduledTime || 'N/A'}`, 196, 23, { align: 'right' });
-    doc.text(`GPS ACCURACY: ${report.gpsStatus?.accuracyMeters || 5}m`, 196, 28, { align: 'right' });
-
-    // Details Box
-    doc.setDrawColor(BORDER_COLOR[0], BORDER_COLOR[1], BORDER_COLOR[2]);
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(14, 40, 182, 34, 2, 2, 'FD');
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text(`Site / Facility: ${report.siteName} (${site?.code || report.siteId})`, 18, 47);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-    doc.text(`Client Enterprise: ${site?.clientName || 'Authorized Enterprise'} | Zone: ${report.area || site?.area || 'Zone 1'}`, 18, 53);
-    doc.text(`Site Address: ${site?.address || 'Site Premises'}`, 18, 58);
-    doc.text(`Field Officer: ${report.officerName} (Badge: ${report.officerBadge || 'N/A'})`, 18, 63);
-    doc.text(
-      `GPS Coordinates: ${report.gpsStatus?.lat || 28.5355}° N, ${report.gpsStatus?.lng || 77.391}° E | Deviation: ${report.gpsStatus?.distanceDeviationMeters || 0}m`,
-      18,
-      68
-    );
-
-    // Checklist Inspection Table
-    const checklistItems = report.checklist || [];
-    const checkRows = checklistItems.map((c, i) => {
-      const isPassed = c.checked;
-      const statusText = isPassed ? 'PASSED / SECURE' : (c.status === 'issue_found' ? 'ISSUE REPORTED' : 'UNVERIFIED');
-      return [
-        `#${i + 1}`,
-        c.category || 'Inspection',
-        c.title || 'Security Checkpoint',
-        statusText,
-        c.notes || c.issueDescription || (isPassed ? 'Verified OK' : 'No notes')
-      ];
-    });
-
-    autoTable(doc, {
-      head: [['#', 'Category', 'Security Checkpoint', 'Audit Result', 'Officer Field Notes']],
-      body: checkRows.length > 0 ? checkRows : [['1', 'General', 'Site Security Patrol', 'PASSED / SECURE', 'All checkpoints verified']],
-      startY: 78,
-      theme: 'grid',
-      headStyles: {
-        fillColor: COFFEE_PRIMARY,
-        textColor: [255, 255, 255],
-        fontSize: 8,
-        fontStyle: 'bold'
-      },
-      bodyStyles: {
-        fontSize: 7.5,
-        textColor: DARK_BROWN,
-        lineColor: BORDER_COLOR
-      },
-      alternateRowStyles: {
-        fillColor: BG_CREAM
-      },
-      margin: { left: 14, right: 14 },
-      styles: {
-        overflow: 'linebreak',
-        cellPadding: 2
-      }
-    });
-
-    const tableFinalY = (doc as any).lastAutoTable?.finalY || 160;
-
-    // Incidents & Remarks Section
-    let currentY = tableFinalY + 6;
-    if (currentY > 230) {
-      doc.addPage();
-      currentY = 20;
-    }
-
-    doc.setFillColor(BG_CREAM[0], BG_CREAM[1], BG_CREAM[2]);
-    doc.roundedRect(14, currentY, 182, 32, 2, 2, 'FD');
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text('OFFICER REMARKS & INCIDENT SUMMARY', 18, currentY + 7);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-    const remarks = report.officerRemarks || (report as any).remarks || 'Regular patrol completed as scheduled. All access points and security perimeters inspected.';
-    const splitRemarks = doc.splitTextToSize(`Remarks: ${remarks}`, 174);
-    doc.text(splitRemarks, 18, currentY + 14);
-
-    const incCount = report.incidents?.length || report.incidentCount || 0;
-    doc.setFont('helvetica', 'bold');
-    if (incCount > 0) {
-      doc.setTextColor(198, 40, 40);
-      doc.text(`Incidents Logged: ${incCount} item(s) flagged during this inspection.`, 18, currentY + 26);
-    } else {
-      doc.setTextColor(27, 94, 32);
-      doc.text('Incidents Logged: ZERO (0) Incidents. Site is verified safe and all clear.', 18, currentY + 26);
-    }
-
-    // Signatures
-    const signY = currentY + 40 < 265 ? currentY + 40 : 255;
-    doc.setDrawColor(BORDER_COLOR[0], BORDER_COLOR[1], BORDER_COLOR[2]);
-    doc.line(16, signY + 12, 76, signY + 12);
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text(`Field Officer: ${report.officerName}`, 16, signY + 16);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
-    doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-    doc.text(`Badge: ${report.officerBadge || 'RF'} · Signed Electronically`, 16, signY + 20);
-
-    doc.line(134, signY + 12, 194, signY + 12);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text('Central Operations Controller', 134, signY + 16);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
-    doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-    doc.text('REXON 24/7 Operations Desk Verification', 134, signY + 20);
-
-    // Save
-    const filename = `REXON_Patrol_Report_${report.reportCode}_${todayStr}.pdf`;
-    doc.save(filename);
-    return true;
-  } catch (err) {
-    console.error('Failed to generate Single Patrol Report PDF:', err);
-    return false;
-  }
+  return generatePdfFromHtml(container, filename, 'portrait');
 }
 
 /**
@@ -565,103 +655,94 @@ export async function downloadOperationsAuditPDF(
   reports: PatrolReport[],
   filterTitle: string = 'Central Operations Patrol Audit'
 ): Promise<boolean> {
-  try {
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    });
+  const todayStr = getTodayStr();
 
-    const todayStr = getTodayStr();
+  const tableRowsHtml = (reports.length > 0 ? reports : []).map((r, i) => {
+    const v = (r.checklist || []).filter((c) => c.checked).length;
+    const t = (r.checklist || []).length;
+    const dev = r.gpsStatus?.distanceDeviationMeters != null ? `${r.gpsStatus.distanceDeviationMeters}m` : '0m';
+    const checkin = r.actualCheckInTime || r.scheduledTime || '-';
+    const inc = r.incidents && r.incidents.length > 0 ? `Incident (${r.incidents.length})` : 'All Clear';
+    const bg = i % 2 === 0 ? '#FFFFFF' : '#FAF7F2';
 
-    // Header Banner
-    doc.setFillColor(BG_CREAM[0], BG_CREAM[1], BG_CREAM[2]);
-    doc.rect(0, 0, 210, 36, 'F');
+    return `
+      <tr style="background-color: ${bg}; border-bottom: 1px solid #E7DED2;">
+        <td style="padding: 7px 10px; font-size: 10px; font-weight: 700; color: #4B3621;">${escapeHtml(r.reportCode || 'LOG')}</td>
+        <td style="padding: 7px 10px; font-size: 9.5px; color: #4B3621;">${escapeHtml(r.siteName || 'Facility')}</td>
+        <td style="padding: 7px 10px; font-size: 9.5px; color: #4B3621;">${escapeHtml(r.scheduledDate)}<br/><span style="color: #8B735B;">${escapeHtml(checkin)}</span></td>
+        <td style="padding: 7px 10px; font-size: 9.5px; color: #4B3621;">${escapeHtml(r.officerName)}<br/><span style="color: #8B735B;">(${escapeHtml(r.officerBadge || 'RF')})</span></td>
+        <td style="padding: 7px 10px; font-size: 9.5px; color: #1B5E20; font-weight: 600;">${v}/${t}</td>
+        <td style="padding: 7px 10px; font-size: 9.5px; color: #6F4E37;">${dev}</td>
+        <td style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; color: #1B5E20;">${escapeHtml((r.status || 'COMPLETED').toUpperCase())}</td>
+        <td style="padding: 7px 10px; font-size: 9.5px; font-weight: 600; color: ${r.incidents && r.incidents.length > 0 ? '#C62828' : '#1B5E20'};">${escapeHtml(inc)}</td>
+      </tr>
+    `;
+  }).join('');
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(17);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text('REXON CENTRAL OPERATIONS AUDIT', 14, 13);
+  const htmlContent = `
+    <div style="width: 794px; min-height: 1123px; background-color: #FFFFFF; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; font-family: 'Inter', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+      
+      <div>
+        <!-- Header Banner -->
+        <div style="background-color: #FAF7F2; border-bottom: 2px solid #E7DED2; padding: 22px 28px; display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 800; color: #2A1E14;">
+              REXON CENTRAL OPERATIONS AUDIT
+            </h1>
+            <div style="font-size: 11px; font-weight: 700; color: #6F4E37; letter-spacing: 0.5px; margin-bottom: 3px; text-transform: uppercase;">
+              ${escapeHtml(filterTitle.toUpperCase())}
+            </div>
+            <div style="font-size: 9.5px; color: #8B735B; margin-bottom: 2px;">
+              Official Master Security Patrol Ledger &amp; Dispatch Log
+            </div>
+            <div style="font-size: 9.5px; font-weight: 700; color: #4B3621;">
+              AUDIT GENERATED: ${todayStr} | TOTAL RECORDS: ${reports.length}
+            </div>
+          </div>
 
-    doc.setFontSize(10.5);
-    doc.setTextColor(COFFEE_PRIMARY[0], COFFEE_PRIMARY[1], COFFEE_PRIMARY[2]);
-    doc.text(filterTitle.toUpperCase(), 14, 20);
+          <div style="text-align: right; font-size: 9px; line-height: 1.55; color: #4B3621;">
+            <div><span style="font-weight: 700;">DISPATCH:</span> CENTRAL 24/7 DESK</div>
+            <div><span style="font-weight: 700;">STATUS:</span> <span style="color: #1B5E20; font-weight: 700;">LIVE CERTIFIED</span></div>
+          </div>
+        </div>
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-    doc.text(`Official Master Security Patrol Ledger & Dispatch Log`, 14, 26);
-    doc.text(`AUDIT GENERATED: ${todayStr} | TOTAL RECORDS: ${reports.length}`, 14, 31);
+        <div style="padding: 20px 28px;">
+          <!-- Table -->
+          <table style="width: 100%; border-collapse: collapse; border: 1px solid #E7DED2; margin-bottom: 24px; border-radius: 4px; overflow: hidden;">
+            <thead>
+              <tr style="background-color: #6F4E37; color: #FFFFFF;">
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Code</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Facility</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Date / Time</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Officer</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Checkpoints</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">GPS</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Status</th>
+                <th style="padding: 7px 10px; font-size: 9.5px; font-weight: 700; text-align: left;">Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRowsHtml || '<tr><td colspan="8" style="padding: 12px; text-align: center; color: #8B735B; font-size: 10px;">No patrol logs found</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(DARK_BROWN[0], DARK_BROWN[1], DARK_BROWN[2]);
-    doc.text(`DISPATCH: CENTRAL 24/7 DESK`, 196, 14, { align: 'right' });
-    doc.text(`STATUS: LIVE CERTIFIED`, 196, 19, { align: 'right' });
+      <!-- Footer -->
+      <div style="border-top: 1px solid #E7DED2; padding: 12px 28px; display: flex; justify-content: space-between; align-items: center; background-color: #FFFFFF;">
+        <div style="font-size: 8.5px; color: #8B735B;">
+          REXON Central Security Operations Console · Page 1 · Master Audit
+        </div>
+        <div style="font-size: 8.5px; font-weight: 700; color: #8B735B; letter-spacing: 0.5px;">
+          CONFIDENTIAL MASTER AUDIT
+        </div>
+      </div>
 
-    // Table
-    const tableRows = reports.map((r) => {
-      const v = (r.checklist || []).filter((c) => c.checked).length;
-      const t = (r.checklist || []).length;
-      const dev = r.gpsStatus?.distanceDeviationMeters != null ? `${r.gpsStatus.distanceDeviationMeters}m` : '0m';
-      const checkin = r.actualCheckInTime || r.scheduledTime || '-';
-      const inc = (r.incidents && r.incidents.length > 0) ? `Incident (${r.incidents.length})` : 'All Clear';
+    </div>
+  `;
 
-      return [
-        r.reportCode || 'LOG',
-        r.siteName || 'Facility',
-        `${r.scheduledDate}\n${checkin}`,
-        `${r.officerName}\n(${r.officerBadge || 'RF'})`,
-        `${v}/${t}`,
-        dev,
-        r.status.toUpperCase(),
-        inc
-      ];
-    });
+  const container = createRenderElement(htmlContent, 794);
+  const filename = `REXON_Central_Operations_Audit_${todayStr}.pdf`;
 
-    autoTable(doc, {
-      head: [['Code', 'Facility', 'Date / Time', 'Officer', 'Checkpoints', 'GPS', 'Status', 'Verdict']],
-      body: tableRows,
-      startY: 42,
-      theme: 'grid',
-      headStyles: {
-        fillColor: COFFEE_PRIMARY,
-        textColor: [255, 255, 255],
-        fontSize: 8,
-        fontStyle: 'bold'
-      },
-      bodyStyles: {
-        fontSize: 7.5,
-        textColor: DARK_BROWN,
-        lineColor: BORDER_COLOR
-      },
-      alternateRowStyles: {
-        fillColor: BG_CREAM
-      },
-      margin: { left: 14, right: 14 },
-      styles: {
-        overflow: 'linebreak',
-        cellPadding: 2
-      },
-      didDrawPage: (data) => {
-        const pageCount = doc.getNumberOfPages();
-        doc.setFontSize(7);
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(MUTED_BROWN[0], MUTED_BROWN[1], MUTED_BROWN[2]);
-        doc.text(
-          `REXON Central Security Operations Console · Page ${data.pageNumber} of ${pageCount}`,
-          14,
-          288
-        );
-        doc.text('CONFIDENTIAL MASTER AUDIT', 196, 288, { align: 'right' });
-      }
-    });
-
-    const filename = `REXON_Central_Operations_Audit_${todayStr}.pdf`;
-    doc.save(filename);
-    return true;
-  } catch (err) {
-    console.error('Failed to export Central Operations Audit PDF:', err);
-    return false;
-  }
+  return generatePdfFromHtml(container, filename, 'portrait');
 }

@@ -7,7 +7,7 @@
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
-    "start":"node server.js",
+    "start": "node server.js",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -17,6 +17,7 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "firebase": "^13.1.0",
+    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.9",
     "lucide-react": "^0.546.0",

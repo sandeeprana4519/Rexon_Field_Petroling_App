@@ -1,9 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
   Users,
-  Battery,
-  BatteryCharging,
-  BatteryWarning,
   Clock,
   Phone,
   Radio,
@@ -203,11 +200,7 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
     }, 2800);
   };
 
-  const getBatteryIcon = (percent: number) => {
-    if (percent < 20) return <BatteryWarning className="w-4 h-4 text-[#C62828]" />;
-    if (percent > 90) return <BatteryCharging className="w-4 h-4 text-[#2E7D32]" />;
-    return <Battery className="w-4 h-4 text-[#8B735B]" />;
-  };
+
 
   const getEmploymentBadge = (status: OfficerEmploymentStatus) => {
     switch (status) {
@@ -511,10 +504,13 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
 
                     <div className="p-2 rounded-lg bg-[#FAF7F2] border border-[#E7DED2]">
                       <div className="text-[#8B735B] flex items-center gap-1 font-medium">
-                        {getBatteryIcon(officer.batteryPercent)}
-                        <span>Battery</span>
+                        <Radio className="w-3 h-3 text-[#1B5E20]" />
+                        <span>GPS Link</span>
                       </div>
-                      <div className="font-mono text-[#4B3621] font-bold mt-0.5">{officer.batteryPercent}%</div>
+                      <div className="font-mono text-[#1B5E20] font-bold mt-0.5 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#1B5E20] animate-pulse"></span>
+                        <span>Linked</span>
+                      </div>
                     </div>
                   </div>
 
