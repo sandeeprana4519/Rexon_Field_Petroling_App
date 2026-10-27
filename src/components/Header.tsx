@@ -2,6 +2,7 @@ import React from 'react';
 import { Shield, Smartphone, RefreshCw, Menu, Clock, LogOut, Briefcase } from 'lucide-react';
 import { NavigationTab, AppMode } from '../types';
 import { useLiveClock } from '../utils/dateUtils';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   currentTab: NavigationTab;
@@ -95,6 +96,9 @@ export const Header: React.FC<HeaderProps> = ({
             <RefreshCw className={`w-3.5 h-3.5 text-[#8B735B] ${isRefreshing ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </button>
+
+          {/* PWA Install Button */}
+          <PWAInstallButton />
 
           {/* Rexon Company Portal Switcher Button */}
           <button

@@ -42,6 +42,7 @@ import { loadFromStorage, saveToStorage, STORAGE_KEYS } from '../utils/storage';
 import { useLiveClock } from '../utils/dateUtils';
 import { getCallUrl, getWhatsAppUrl, REXON_ADMIN_CONTACT, WhatsAppIcon } from '../utils/contactUtils';
 import { getGoogleMapsNavUrl, getGoogleMapsViewUrl } from '../utils/mapUtils';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface FieldOfficerModeProps {
   officers: FieldOfficer[];
@@ -398,9 +399,12 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 text-xs font-mono text-[#1B5E20] bg-[#FAF7F2] px-3 py-1.5 rounded-lg border border-[#E7DED2] self-start sm:self-auto font-bold">
-              <span className="w-2 h-2 rounded-full bg-[#1B5E20] animate-pulse"></span>
-              <span>GPS Linked</span>
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <PWAInstallButton variant="banner" />
+              <div className="flex items-center gap-1.5 text-xs font-mono text-[#1B5E20] bg-[#FAF7F2] px-3 py-1.5 rounded-lg border border-[#E7DED2] font-bold">
+                <span className="w-2 h-2 rounded-full bg-[#1B5E20] animate-pulse"></span>
+                <span>GPS Linked</span>
+              </div>
             </div>
           </div>
 
