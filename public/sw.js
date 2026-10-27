@@ -1,12 +1,13 @@
-// Rexon Field Patrolling PWA Service Worker
-const CACHE_NAME = 'rexon-pwa-v1';
+// Rexon Field Patrolling PWA Service Worker (v2 - Cache-busted with custom shield icon)
+const CACHE_NAME = 'rexon-pwa-v2';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/icons/icon-192x192.png',
+  '/icons/icon-512x512.png',
   '/pwa-192x192.png',
   '/pwa-512x512.png',
-  '/pwa-maskable-512x512.png',
   '/apple-touch-icon.png'
 ];
 
@@ -16,19 +17,20 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-        console.warn('PWA Precache failed for some assets:', err);
+        console.warn('PWA Precache note for assets:', err);
       });
     })
   );
 });
 
-// Activate Event: purge outdated caches and claim clients
+// Activate Event: purge outdated caches (e.g. v1) and claim clients immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
+            console.log('Purging old PWA cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
@@ -37,11 +39,10 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch Event: Network-first for navigations and API, Stale-while-revalidate for static assets
+// Fetch Event: Network-first for navigations, cache-first/revalidate for assets
 self.addEventListener('fetch', (event) => {
   const request = event.request;
 
-  // Ignore non-GET requests and browser extensions
   if (request.method !== 'GET' || !request.url.startsWith(self.location.origin)) {
     return;
   }
@@ -66,11 +67,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: Cache First with network update
+  // Static assets: Cache First with background network refresh
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Update cache in the background
         fetch(request)
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {

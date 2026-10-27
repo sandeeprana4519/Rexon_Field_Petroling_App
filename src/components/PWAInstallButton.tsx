@@ -59,7 +59,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
           <div className="w-full max-w-sm rounded-2xl bg-[#FFFFFF] border border-[#E7DED2] p-5 shadow-2xl text-[#4B3621]">
             <div className="flex items-center justify-between border-b border-[#E7DED2] pb-3 mb-3">
               <div className="flex items-center gap-2">
-                <img src="/pwa-192x192.png" alt="Rexon Logo" className="w-7 h-7 rounded-lg" />
+                <img src="/icons/icon-192x192.png" alt="Rexon Logo" className="w-7 h-7 rounded-lg" />
                 <h3 className="text-sm font-bold text-[#4B3621]">Install on iPhone / iPad</h3>
               </div>
               <button
