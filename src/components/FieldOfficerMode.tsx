@@ -43,6 +43,8 @@ import { useLiveClock } from '../utils/dateUtils';
 import { getCallUrl, getWhatsAppUrl, REXON_ADMIN_CONTACT, WhatsAppIcon } from '../utils/contactUtils';
 import { getGoogleMapsNavUrl, getGoogleMapsViewUrl } from '../utils/mapUtils';
 import { PWAInstallButton } from './PWAInstallButton';
+import { GpsGeofenceValidationModal } from './GpsGeofenceValidationModal';
+import { GeofenceValidationResult } from '../utils/geofenceUtils';
 
 interface FieldOfficerModeProps {
   officers: FieldOfficer[];
@@ -115,6 +117,8 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
   // Active patrol session site
   const [activePatrolSite, setActivePatrolSite] = useState<Site | null>(null);
   const [activePatrolScheduledTime, setActivePatrolScheduledTime] = useState<string>('08:00 AM');
+  const [validatingSite, setValidatingSite] = useState<{ site: Site; scheduledTime: string } | null>(null);
+  const [activeGeofenceValidation, setActiveGeofenceValidation] = useState<GeofenceValidationResult | null>(null);
 
   // Site details preview modal
   const [inspectingSite, setInspectingSite] = useState<Site | null>(null);
@@ -201,8 +205,7 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
   const missedCount = assignedSitesWithStatus.filter((s) => s.status === 'missed').length;
 
   const startPatrolForSite = (site: Site, scheduledTime: string) => {
-    setActivePatrolSite(site);
-    setActivePatrolScheduledTime(scheduledTime);
+    setValidatingSite({ site, scheduledTime });
   };
 
   const getStatusBadge = (status: PatrolStatus) => {
@@ -736,19 +739,41 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
         </div>
       </main>
 
+      {/* GPS GEOFENCE VALIDATION MODAL (Pre-Patrol Check) */}
+      {validatingSite && (
+        <GpsGeofenceValidationModal
+          site={validatingSite.site}
+          officer={activeOfficer}
+          scheduledTime={validatingSite.scheduledTime}
+          onClose={() => setValidatingSite(null)}
+          onValidationSuccess={(result) => {
+            setActiveGeofenceValidation(result);
+            setActivePatrolSite(validatingSite.site);
+            setActivePatrolScheduledTime(validatingSite.scheduledTime);
+            setValidatingSite(null);
+          }}
+        />
+      )}
+
       {/* ACTIVE PATROL EXECUTION MODAL */}
       {activePatrolSite && (
         <OfficerPatrolSession
           site={activePatrolSite}
           officer={activeOfficer}
           scheduledTime={activePatrolScheduledTime}
-          onClose={() => setActivePatrolSite(null)}
+          geofenceValidation={activeGeofenceValidation || undefined}
+          onClose={() => {
+            setActivePatrolSite(null);
+            setActiveGeofenceValidation(null);
+          }}
           onSubmitReport={(newReport, newIncidents) => {
             onSubmitPatrolReport(newReport, newIncidents);
             setActivePatrolSite(null);
+            setActiveGeofenceValidation(null);
           }}
           onSwitchToOwnerDashboard={(repId) => {
             setActivePatrolSite(null);
+            setActiveGeofenceValidation(null);
             onViewReportInOwner(repId);
           }}
         />

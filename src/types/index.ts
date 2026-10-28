@@ -214,6 +214,12 @@ export interface PatrolReport {
     lng?: number;
     label: string;
     isSimulated?: boolean;
+    siteLat?: number;
+    siteLng?: number;
+    validatedAt?: string;
+    validationToken?: string;
+    geofenceRadiusMeters?: number;
+    validationSource?: 'device_gps' | 'backend_verified' | 'simulation';
   };
   checklist: ChecklistItem[];
   officerRemarks: string;

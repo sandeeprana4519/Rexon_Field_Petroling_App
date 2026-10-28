@@ -121,7 +121,10 @@ service cloud.firestore {
             (
               request.resource.data.officerId == getUserData().officerId ||
               request.resource.data.officerId == request.auth.uid
-            )
+            ) &&
+            request.resource.data.gpsStatus.verified == true &&
+            request.resource.data.gpsStatus.distanceDeviationMeters <= 100 &&
+            request.resource.data.gpsStatus.accuracyMeters <= 20
           )
         );
 

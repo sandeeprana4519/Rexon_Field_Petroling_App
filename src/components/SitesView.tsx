@@ -215,7 +215,7 @@ export const SitesView: React.FC<SitesViewProps> = ({
       patrolFrequency: '2x per shift',
       lat: '37.7842',
       lng: '-122.3965',
-      geofenceRadiusMeters: 60,
+      geofenceRadiusMeters: 50,
       loginId: `site${nextNum}.portal`,
       password: `site${nextNum}pass`,
       industry: 'Commercial & Industrial',
@@ -378,11 +378,16 @@ export const SitesView: React.FC<SitesViewProps> = ({
       contactPerson: formData.contactPerson.trim(),
       contactPhone: formData.contactPhone.trim(),
       patrolFrequency: formData.patrolFrequency,
-      geofenceRadiusMeters: Number(formData.geofenceRadiusMeters) || 50,
-      coordinates: {
-        lat: formData.lat ? parseFloat(formData.lat) : getFallbackCoordinatesForSite({ area: formData.area }).lat,
-        lng: formData.lng ? parseFloat(formData.lng) : getFallbackCoordinatesForSite({ area: formData.area }).lng
-      },
+      geofenceRadiusMeters: Math.min(100, Math.max(50, Number(formData.geofenceRadiusMeters) || 50)),
+      coordinates:
+        formData.lat && formData.lng && !isNaN(parseFloat(formData.lat)) && !isNaN(parseFloat(formData.lng))
+          ? {
+              lat: parseFloat(formData.lat),
+              lng: parseFloat(formData.lng)
+            }
+          : editingSite?.coordinates?.lat != null && editingSite?.coordinates?.lng != null
+          ? editingSite.coordinates
+          : undefined,
       securityStatus: editingSite ? editingSite.securityStatus : 'normal',
       isActive: editingSite ? editingSite.isActive : true,
       requiredDailyPatrols: editingSite ? editingSite.requiredDailyPatrols : 6,
@@ -1406,9 +1411,11 @@ export const SitesView: React.FC<SitesViewProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[#8B735B] text-[10px] mb-0.5 font-semibold">Radius (meters)</label>
+                    <label className="block text-[#8B735B] text-[10px] mb-0.5 font-semibold">Geofence Radius (50–100m)</label>
                     <input
                       type="number"
+                      min={50}
+                      max={100}
                       value={formData.geofenceRadiusMeters}
                       onChange={(e) => setFormData({ ...formData, geofenceRadiusMeters: Number(e.target.value) })}
                       className="w-full px-2.5 py-1 bg-[#FFFFFF] border border-[#E7DED2] rounded text-[#4B3621] font-mono focus:outline-none focus:border-[#6F4E37]"
