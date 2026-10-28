@@ -2,16 +2,11 @@ import React, { useState } from 'react';
 import {
   Shield,
   Lock,
-  Mail,
   User,
   ArrowRight,
   Eye,
   EyeOff,
   AlertTriangle,
-  CheckCircle2,
-  Building2,
-  KeyRound,
-  ShieldAlert,
   ArrowLeft
 } from 'lucide-react';
 import { FieldOfficer } from '../types';
@@ -32,9 +27,6 @@ export const OfficerLoginView: React.FC<OfficerLoginViewProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Active officers available for quick demo selection
-  const activeOfficers = officers.filter((o) => o.employmentStatus === 'active');
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,21 +72,13 @@ export const OfficerLoginView: React.FC<OfficerLoginViewProps> = ({
       const expectedPassword = matched.password || 'rexon123';
       if (cleanPass !== expectedPassword) {
         setIsSubmitting(false);
-        setErrorMessage('Incorrect password. (Default demo password is: rexon123)');
+        setErrorMessage('Incorrect password. Please verify your credentials and try again.');
         return;
       }
 
       setIsSubmitting(false);
       onLoginSuccess(matched);
     }, 350);
-  };
-
-  const handleQuickDemoLogin = (officer: FieldOfficer) => {
-    const cred = officer.email || officer.employeeId;
-    setIdentifier(cred);
-    setPassword(officer.password || 'rexon123');
-    setErrorMessage(null);
-    onLoginSuccess(officer);
   };
 
   return (
@@ -177,9 +161,6 @@ export const OfficerLoginView: React.FC<OfficerLoginViewProps> = ({
                 <label className="text-xs font-semibold text-[#4B3621]">
                   Security Password *
                 </label>
-                <span className="text-[10px] text-[#8B735B] font-mono">
-                  Default: rexon123
-                </span>
               </div>
               <div className="relative">
                 <input
@@ -212,37 +193,6 @@ export const OfficerLoginView: React.FC<OfficerLoginViewProps> = ({
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
-
-          {/* Quick Demo Login Badges */}
-          <div className="pt-2 border-t border-[#E7DED2] space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-[#8B735B] uppercase font-mono tracking-wider">
-                Quick Demo Login (One-Click)
-              </span>
-              <span className="text-[10px] text-[#8B735B]">
-                Pre-configured Guards
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {activeOfficers.slice(0, 4).map((off) => (
-                <button
-                  key={off.id}
-                  type="button"
-                  onClick={() => handleQuickDemoLogin(off)}
-                  className="p-2.5 rounded-xl border border-[#E7DED2] bg-[#FAF7F2] hover:bg-[#F0E8DD] hover:border-[#6F4E37] text-left transition-all cursor-pointer flex items-center gap-2.5 shadow-2xs group"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-[#FFFFFF] border border-[#E7DED2] text-[#6F4E37] font-bold text-xs flex items-center justify-center shrink-0 group-hover:bg-[#6F4E37] group-hover:text-white transition-colors">
-                    {off.name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-bold text-xs text-[#4B3621] truncate">{off.name}</div>
-                    <div className="text-[10px] text-[#8B735B] font-mono truncate">{off.employeeId} · {off.area.split('-')[0]}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Security Notice */}
           <div className="text-[10px] text-center text-[#8B735B] leading-tight">

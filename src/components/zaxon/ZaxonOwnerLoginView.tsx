@@ -7,11 +7,7 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  CheckCircle2,
-  AlertTriangle,
-  Compass,
-  FileCheck2,
-  Briefcase
+  AlertTriangle
 } from 'lucide-react';
 import { CompanyClientAccount } from '../../types';
 
@@ -71,12 +67,6 @@ export const ZaxonOwnerLoginView: React.FC<ZaxonOwnerLoginViewProps> = ({
 
     // Success
     onLoginSuccess(matchedAccount);
-  };
-
-  const handleQuickFill = (acc: CompanyClientAccount) => {
-    setLoginId(acc.loginId);
-    setPassword(acc.password || '');
-    setErrorMessage(null);
   };
 
   return (
@@ -200,53 +190,6 @@ export const ZaxonOwnerLoginView: React.FC<ZaxonOwnerLoginViewProps> = ({
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
-
-          {/* Quick Demo Credentials Section - 1 Login Per Company */}
-          <div className="pt-4 border-t border-[#E7DED2] space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-[#8B735B] uppercase tracking-wider">
-                Company Credentials (1 Login Per Company)
-              </span>
-              <span className="text-[10px] text-[#1B5E20] font-semibold">1-Tap Fill</span>
-            </div>
-            <p className="text-[10px] text-[#8B735B]">
-              This single login ID & password can be shared with company leadership, HR, and facility managers.
-            </p>
-
-            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-              {accounts.map((acc) => (
-                <button
-                  key={acc.id}
-                  type="button"
-                  onClick={() => handleQuickFill(acc)}
-                  className="w-full p-2.5 rounded-xl bg-[#FAF7F2] hover:bg-[#F0E8DD] border border-[#E7DED2] text-left transition-colors cursor-pointer flex items-center justify-between group"
-                >
-                  <div className="min-w-0 pr-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-xs text-[#4B3621] group-hover:text-[#6F4E37] truncate">
-                        {acc.companyName}
-                      </span>
-                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-[#E8D8C5] border border-[#D5C2AD] text-[#4B3621] shrink-0">
-                        Company Login
-                      </span>
-                    </div>
-                    <div className="text-[11px] font-mono font-semibold text-[#6F4E37] mt-0.5">
-                      ID: {acc.loginId}
-                    </div>
-                    {acc.address && (
-                      <div className="text-[10px] text-[#8B735B] truncate mt-0.5">
-                        📍 {acc.address}
-                      </div>
-                    )}
-                  </div>
-
-                  <span className="text-[10px] font-mono font-bold text-[#4B3621] bg-white px-2 py-1 rounded border border-[#E7DED2] shrink-0">
-                    {acc.password}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Security Notice */}

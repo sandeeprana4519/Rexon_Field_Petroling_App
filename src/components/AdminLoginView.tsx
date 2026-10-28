@@ -6,7 +6,6 @@ import {
   Eye,
   EyeOff,
   AlertTriangle,
-  CheckCircle2,
   KeyRound,
   Smartphone,
   ArrowRight
@@ -76,12 +75,6 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
       setIsSubmitting(false);
       onLoginSuccess();
     }, 300);
-  };
-
-  const handleFillDefaultCredentials = () => {
-    setIdentifier(adminCredentials.adminId || 'admin@rexon.com');
-    setPassword(adminCredentials.password || 'rexonadmin123');
-    setErrorMessage(null);
   };
 
   return (
@@ -233,40 +226,6 @@ export const AdminLoginView: React.FC<AdminLoginViewProps> = ({
               )}
             </button>
           </form>
-
-          {/* Quick-Fill Default Demo Credentials Card */}
-          <div className="pt-2 border-t border-[#E7DED2]">
-            <div className="p-3.5 rounded-xl bg-[#FAF7F2] border border-[#E7DED2] space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-[#4B3621] flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-[#2E7D32]" />
-                  <span>Default Admin Credentials · डिफ़ॉल्ट क्रेडेंशियल्स</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={handleFillDefaultCredentials}
-                  className="text-[11px] text-[#6F4E37] hover:text-[#4B3621] font-bold underline cursor-pointer"
-                >
-                  Auto-Fill
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-[11px] font-mono bg-[#FFFFFF] p-2 rounded-lg border border-[#E7DED2]">
-                <div>
-                  <span className="text-[#8B735B] block text-[10px]">Admin ID:</span>
-                  <strong className="text-[#4B3621] truncate block">{adminCredentials.adminId || 'admin@rexon.com'}</strong>
-                </div>
-                <div>
-                  <span className="text-[#8B735B] block text-[10px]">Password:</span>
-                  <strong className="text-[#4B3621] block">{adminCredentials.password || 'rexonadmin123'}</strong>
-                </div>
-              </div>
-
-              <p className="text-[10px] text-[#8B735B] leading-tight">
-                Note: You can update these credentials anytime inside <strong>Admin Dashboard &gt; Settings &gt; Admin Credentials</strong>.
-              </p>
-            </div>
-          </div>
         </div>
       </main>
 
