@@ -20,7 +20,7 @@ import {
   Headphones
 } from 'lucide-react';
 import { CompanyClientAccount, PatrolReport, Site, IncidentRecord, FieldOfficer, Assignment } from '../../types';
-import { getCallUrl, getWhatsAppUrl, REXON_ADMIN_CONTACT, WhatsAppIcon } from '../../utils/contactUtils';
+import { getCallUrl, getWhatsAppUrl, REXON_ADMIN_CONTACT, WhatsAppIcon, useControlRoomContacts } from '../../utils/contactUtils';
 import { useLiveClock } from '../../utils/dateUtils';
 
 interface ZaxonOwnerDashboardViewProps {
@@ -44,6 +44,8 @@ export const ZaxonOwnerDashboardView: React.FC<ZaxonOwnerDashboardViewProps> = (
   onSelectReport,
   onNavigateToTab
 }) => {
+  const { contacts: controlRoomContacts } = useControlRoomContacts();
+
   // Live Date & Time Clock Hook (ticking with seconds)
   const { displayDateFormatted, liveTimeWithSeconds } = useLiveClock(1000);
 
@@ -366,15 +368,15 @@ export const ZaxonOwnerDashboardView: React.FC<ZaxonOwnerDashboardViewProps> = (
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full lg:w-auto shrink-0 pt-1 lg:pt-0">
             <a
-              href={getCallUrl(REXON_ADMIN_CONTACT.phone)}
+              href={getCallUrl(controlRoomContacts.callAdminPhone)}
               className="inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-white hover:bg-[#FAF7F2] text-[#4B3621] border border-[#E7DED2] hover:border-[#6F4E37] font-bold text-xs shadow-2xs transition-all active:scale-95 cursor-pointer"
             >
               <Phone className="w-3.5 h-3.5 text-[#6F4E37]" />
-              <span>Call: {REXON_ADMIN_CONTACT.phone}</span>
+              <span>Call: {controlRoomContacts.helplinePhone}</span>
             </a>
 
             <a
-              href={getWhatsAppUrl(REXON_ADMIN_CONTACT.phone, `Hello REXON Operations Desk, contacting from ${account.companyName} regarding security patrol support.`)}
+              href={getWhatsAppUrl(controlRoomContacts.whatsappNumber, `Hello REXON Operations Desk, contacting from ${account.companyName} regarding security patrol support.`)}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#25D366] hover:bg-[#1EBE5D] text-white font-bold text-xs shadow-2xs transition-all active:scale-95 cursor-pointer"

@@ -33,6 +33,7 @@ import { ZaxonDownloadsView } from './ZaxonDownloadsView';
 import { SiteDetailModal } from '../SiteDetailModal';
 import { loadFromStorage, saveToStorage, STORAGE_KEYS } from '../../utils/storage';
 import { useLiveClock } from '../../utils/dateUtils';
+import { getCallUrl, getWhatsAppUrl, WhatsAppIcon, useControlRoomContacts } from '../../utils/contactUtils';
 
 interface ZaxonOwnerAppProps {
   accounts: CompanyClientAccount[];
@@ -59,6 +60,8 @@ export const ZaxonOwnerApp: React.FC<ZaxonOwnerAppProps> = ({
   onUpdateAccount,
   initialLoginId = ''
 }) => {
+  const { contacts: controlRoomContacts } = useControlRoomContacts();
+
   // Live Clock Hook (Ticking live with seconds)
   const { displayDateFormatted, liveTimeWithSeconds } = useLiveClock(1000);
   
@@ -204,6 +207,38 @@ export const ZaxonOwnerApp: React.FC<ZaxonOwnerAppProps> = ({
 
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-[#4B3621] flex flex-col">
+      {/* Control Room Helpline Strip */}
+      <div className="bg-[#FAF7F2] border-b border-[#E7DED2] px-3 sm:px-6 py-2">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 truncate">
+            <span className="w-2 h-2 rounded-full bg-[#1B5E20] animate-pulse shrink-0" />
+            <span className="text-[#8B735B] truncate">
+              कंट्रोल रूम हेल्पलाइन (Admin Desk): <strong className="text-[#4B3621] font-mono">{controlRoomContacts.helplinePhone}</strong>
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <a
+              href={getCallUrl(controlRoomContacts.callAdminPhone)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-[#F0E8DD] text-[#4B3621] border border-[#E7DED2] rounded-lg font-bold text-[11px] shadow-2xs"
+              title="Call Control Room"
+            >
+              <Phone className="w-3 h-3 text-[#6F4E37]" />
+              <span>Call Admin</span>
+            </a>
+            <a
+              href={getWhatsAppUrl(controlRoomContacts.whatsappNumber, `Hello REXON Operations Desk, contacting regarding company portal security support.`)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#25D366] hover:bg-[#1EBE5D] text-white rounded-lg font-bold text-[11px] shadow-2xs"
+              title="WhatsApp Admin Desk"
+            >
+              <WhatsAppIcon className="w-3 h-3 text-white" />
+              <span>WhatsApp</span>
+            </a>
+          </div>
+        </div>
+      </div>
+
       {/* Top Navigation Bar */}
       <header className="sticky top-0 z-40 bg-white border-b border-[#E7DED2] shadow-2xs">
         <div className="max-w-7xl mx-auto px-3 sm:px-6">

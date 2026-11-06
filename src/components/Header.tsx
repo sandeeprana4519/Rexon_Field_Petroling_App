@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Smartphone, RefreshCw, Menu, Clock, LogOut, Briefcase } from 'lucide-react';
+import { Shield, Smartphone, RefreshCw, Menu, Clock, LogOut, Briefcase, Headphones } from 'lucide-react';
 import { NavigationTab, AppMode } from '../types';
 import { useLiveClock } from '../utils/dateUtils';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -14,6 +14,7 @@ interface HeaderProps {
   companyName?: string;
   ownerName?: string;
   onLogoutAdmin?: () => void;
+  onOpenContactsModal?: () => void;
 }
 
 const TAB_TITLES: Record<NavigationTab, { title: string; subtitle: string }> = {
@@ -36,7 +37,8 @@ export const Header: React.FC<HeaderProps> = ({
   isRefreshing,
   companyName = 'Rexon Field Patrolling App',
   ownerName = 'Cmdr. J. Reynolds',
-  onLogoutAdmin
+  onLogoutAdmin,
+  onOpenContactsModal
 }) => {
   const currentInfo = TAB_TITLES[currentTab];
   const { displayDateFormatted, liveTimeWithSeconds } = useLiveClock(1000);
@@ -86,6 +88,20 @@ export const Header: React.FC<HeaderProps> = ({
               {liveTimeWithSeconds}
             </span>
           </div>
+
+          {/* Manage Control Room Contacts Button */}
+          {onOpenContactsModal && (
+            <button
+              type="button"
+              onClick={onOpenContactsModal}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold text-[#4B3621] hover:text-[#6F4E37] bg-[#FAF7F2] hover:bg-[#F0E8DD] border border-[#E7DED2] hover:border-[#6F4E37] rounded-lg transition-colors cursor-pointer shadow-2xs whitespace-nowrap shrink-0"
+              title="Manage Control Room Contacts / अपडेट कंट्रोल रूम हेल्पलाइन"
+            >
+              <Headphones className="w-3.5 h-3.5 text-[#6F4E37] shrink-0" />
+              <span className="hidden xl:inline">कंट्रोल रूम हेल्पलाइन</span>
+              <span className="xl:hidden">हेल्पलाइन</span>
+            </button>
+          )}
 
           <button
             onClick={onRefreshData}

@@ -25,11 +25,98 @@ export const getWhatsAppUrl = (phone: string, message?: string): string => {
   return message ? `${baseUrl}?text=${encodeURIComponent(message)}` : baseUrl;
 };
 
+export interface ControlRoomContacts {
+  helplinePhone: string;     // Control Room / Admin Desk Phone Number (displayed in header marquee/bar)
+  callAdminPhone: string;    // Direct Call Phone Number (triggered by "Call Admin")
+  whatsappNumber: string;    // WhatsApp Number (triggered by "WhatsApp")
+  updatedAt?: string;
+}
+
+export const DEFAULT_CONTROL_ROOM_CONTACTS: ControlRoomContacts = {
+  helplinePhone: '+91 98765 43210',
+  callAdminPhone: '+91 98765 43210',
+  whatsappNumber: '+91 98765 43210',
+  updatedAt: '2026-11-06T00:00:00.000Z'
+};
+
+export const STORAGE_KEY_CONTROL_ROOM_CONTACTS = 'rexon_control_room_contacts_v1';
+
+export const loadControlRoomContacts = (): ControlRoomContacts => {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_CONTROL_ROOM_CONTACTS) : null;
+    if (!raw) return DEFAULT_CONTROL_ROOM_CONTACTS;
+    const parsed = JSON.parse(raw);
+    return {
+      helplinePhone: parsed.helplinePhone?.trim() || DEFAULT_CONTROL_ROOM_CONTACTS.helplinePhone,
+      callAdminPhone: parsed.callAdminPhone?.trim() || DEFAULT_CONTROL_ROOM_CONTACTS.callAdminPhone,
+      whatsappNumber: parsed.whatsappNumber?.trim() || DEFAULT_CONTROL_ROOM_CONTACTS.whatsappNumber,
+      updatedAt: parsed.updatedAt || DEFAULT_CONTROL_ROOM_CONTACTS.updatedAt
+    };
+  } catch {
+    return DEFAULT_CONTROL_ROOM_CONTACTS;
+  }
+};
+
+export const saveControlRoomContacts = (contacts: ControlRoomContacts): void => {
+  try {
+    const updated: ControlRoomContacts = {
+      helplinePhone: contacts.helplinePhone.trim(),
+      callAdminPhone: contacts.callAdminPhone.trim(),
+      whatsappNumber: contacts.whatsappNumber.trim(),
+      updatedAt: new Date().toISOString()
+    };
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_CONTROL_ROOM_CONTACTS, JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('rexon_contacts_updated', { detail: updated }));
+    }
+  } catch (err) {
+    console.warn('[ContactUtils] Failed to save control room contacts:', err);
+  }
+};
+
+export const useControlRoomContacts = () => {
+  const [contacts, setContacts] = React.useState<ControlRoomContacts>(() => loadControlRoomContacts());
+
+  React.useEffect(() => {
+    const handleUpdate = (e: Event) => {
+      const custom = e as CustomEvent<ControlRoomContacts>;
+      if (custom.detail) {
+        setContacts(custom.detail);
+      } else {
+        setContacts(loadControlRoomContacts());
+      }
+    };
+
+    window.addEventListener('rexon_contacts_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('rexon_contacts_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
+
+  return { contacts, updateContacts: saveControlRoomContacts };
+};
+
 export const REXON_ADMIN_CONTACT = {
-  name: 'REXON Central Operations Control Room',
-  phone: '+91 98765 43210',
-  email: 'ops@rexon.com',
-  available: '24/7 Live Monitoring & Dispatch'
+  get name() {
+    return 'REXON Central Operations Control Room';
+  },
+  get phone() {
+    return loadControlRoomContacts().helplinePhone;
+  },
+  get callPhone() {
+    return loadControlRoomContacts().callAdminPhone;
+  },
+  get whatsapp() {
+    return loadControlRoomContacts().whatsappNumber;
+  },
+  get email() {
+    return 'ops@rexon.com';
+  },
+  get available() {
+    return '24/7 Live Monitoring & Dispatch';
+  }
 };
 
 /**

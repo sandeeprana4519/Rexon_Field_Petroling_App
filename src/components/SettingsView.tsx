@@ -22,13 +22,15 @@ import {
   KeyRound,
   Eye,
   EyeOff,
-  Building2
+  Building2,
+  Headphones
 } from 'lucide-react';
 import { DEMO_COMPANY_CONFIG } from '../data/demoData';
 import { VoiceInputControl } from './VoiceInputControl';
 import { isFirebaseConfigured, missingFirebaseConfigKeys, firebaseConfig } from '../lib/firebase';
 import { migrateLocalDataToFirestore, DEFAULT_COMPANY_ID } from '../services/firestoreService';
 import { AdminCredentials, DEFAULT_ADMIN_CREDENTIALS } from '../utils/storage';
+import { useControlRoomContacts } from '../utils/contactUtils';
 import {
   Site,
   FieldOfficer,
@@ -53,6 +55,7 @@ interface SettingsViewProps {
   onUpdateAdminCredentials?: (creds: AdminCredentials) => void;
   onOpenMobilePreview: () => void;
   onResetToDemoDefaults: () => void;
+  onOpenContactsModal?: () => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -68,9 +71,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onSaveCompanyConfig,
   onUpdateAdminCredentials,
   onOpenMobilePreview,
-  onResetToDemoDefaults
+  onResetToDemoDefaults,
+  onOpenContactsModal
 }) => {
   const [config, setConfig] = useState(companyConfig);
+  const { contacts: controlRoomContacts } = useControlRoomContacts();
 
   // Sync state if companyConfig prop updates
   React.useEffect(() => {
@@ -268,6 +273,68 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* Main Settings Form */}
       <form onSubmit={handleSave} className="space-y-6">
+        {/* Card 0: Control Room Helpline & Contact Settings (Dynamic Feature) */}
+        <div className="bg-[#FFFFFF] border-2 border-[#D5C2AD] rounded-xl p-5 space-y-4 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E7DED2] pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-[#FAF7F2] border border-[#E7DED2] flex items-center justify-center text-[#6F4E37]">
+                <Headphones className="w-4 h-4 text-[#6F4E37]" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#4B3621] flex items-center gap-2">
+                  <span>Manage Control Room Contacts</span>
+                  <span className="text-xs font-normal text-[#8B735B]">· अपडेट कंट्रोल रूम हेल्पलाइन</span>
+                </h3>
+                <p className="text-xs text-[#8B735B]">
+                  हेल्पलाइन बार, "Call Admin" व "WhatsApp" बटन के नंबर प्रबंधित करें
+                </p>
+              </div>
+            </div>
+            {onOpenContactsModal && (
+              <button
+                type="button"
+                onClick={onOpenContactsModal}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#6F4E37] hover:bg-[#5A3E2B] text-white rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer self-start sm:self-auto shrink-0"
+              >
+                <Phone className="w-3.5 h-3.5 text-white" />
+                <span>अपडेट करें (Edit Contacts Modal)</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div className="p-3 rounded-lg bg-[#FAF7F2] border border-[#E7DED2]">
+              <div className="text-[10px] font-bold text-[#8B735B] uppercase tracking-wider mb-1">
+                कंट्रोल रूम हेल्पलाइन (Marquee Strip)
+              </div>
+              <div className="text-xs font-mono font-bold text-[#4B3621] truncate">
+                {controlRoomContacts.helplinePhone}
+              </div>
+              <p className="text-[10px] text-[#8B735B] mt-1">फील्ड व कंपनी पोर्टल के टॉप बार पर प्रदर्शित</p>
+            </div>
+
+            <div className="p-3 rounded-lg bg-[#FAF7F2] border border-[#E7DED2]">
+              <div className="text-[10px] font-bold text-[#8B735B] uppercase tracking-wider mb-1">
+                डायरेक्ट कॉल नंबर (Call Admin)
+              </div>
+              <div className="text-xs font-mono font-bold text-[#4B3621] truncate">
+                {controlRoomContacts.callAdminPhone}
+              </div>
+              <p className="text-[10px] text-[#8B735B] mt-1">"Call Admin" बटन क्लिक करने पर डायल होगा</p>
+            </div>
+
+            <div className="p-3 rounded-lg bg-[#FAF7F2] border border-[#E7DED2]">
+              <div className="text-[10px] font-bold text-[#8B735B] uppercase tracking-wider mb-1">
+                व्हाट्सऐप सपोर्ट नंबर (WhatsApp)
+              </div>
+              <div className="text-xs font-mono font-bold text-[#2E7D32] truncate">
+                {controlRoomContacts.whatsappNumber}
+              </div>
+              <p className="text-[10px] text-[#8B735B] mt-1">"WhatsApp" बटन क्लिक पर चैट शुरू होगी</p>
+            </div>
+          </div>
+        </div>
+
         {/* Card 1: Company Profile */}
         <div className="bg-[#FFFFFF] border border-[#E7DED2] rounded-xl p-5 space-y-4 shadow-2xs">
           <div className="flex items-center justify-between border-b border-[#E7DED2] pb-3">

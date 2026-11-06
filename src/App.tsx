@@ -42,11 +42,13 @@ import { IncidentsView } from './components/IncidentsView';
 import { AssignmentsView } from './components/AssignmentsView';
 import { SettingsView } from './components/SettingsView';
 import { ChecklistManagerModal } from './components/ChecklistManagerModal';
+import { ManageControlRoomContactsModal } from './components/ManageControlRoomContactsModal';
 import { FieldOfficerMode } from './components/FieldOfficerMode';
 import { AdminLoginView } from './components/AdminLoginView';
 import { ZaxonOwnerApp } from './components/zaxon/ZaxonOwnerApp';
 import { ShieldCheck, FileSpreadsheet, AlertTriangle, ArrowUpRight, Smartphone, LogOut, Compass, Download } from 'lucide-react';
-import { isFirebaseConfigured } from './lib/firebase';
+import { isFirebaseConfigured, auth } from './lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { downloadPatrolReportsCSV } from './utils/csvExport';
 import { downloadOperationsAuditPDF } from './utils/pdfExport';
 import {
@@ -115,6 +117,7 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedReport, setSelectedReport] = useState<PatrolReport | null>(null);
   const [isChecklistManagerOpen, setIsChecklistManagerOpen] = useState(false);
+  const [isContactsModalOpen, setIsContactsModalOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [globalFeedback, setGlobalFeedback] = useState<string | null>(null);
 
@@ -282,39 +285,56 @@ export default function App() {
     saveToStorage(STORAGE_KEYS.CLIENT_ACCOUNTS, clientAccounts);
   }, [clientAccounts]);
 
-  // Live Cloud Firestore Subscriptions (Active only when real Firebase is configured)
+  // Live Cloud Firestore Subscriptions (Active only when real Firebase is configured and user is authenticated)
   useEffect(() => {
-    if (!isFirebaseConfigured) return;
+    if (!isFirebaseConfigured || !auth) return;
 
-    const unsubs = [
-      subscribeSites(DEFAULT_COMPANY_ID, (liveSites) => {
-        if (liveSites && liveSites.length > 0) setSites(liveSites);
-      }, (err) => setGlobalFeedback(`[Firestore Error] Sites sync: ${err.message}`)),
-      subscribeOfficers(DEFAULT_COMPANY_ID, (liveOfficers) => {
-        if (liveOfficers && liveOfficers.length > 0) setOfficers(liveOfficers);
-      }),
-      subscribeAssignments(DEFAULT_COMPANY_ID, (liveAssignments) => {
-        if (liveAssignments && liveAssignments.length > 0) setAssignments(liveAssignments);
-      }),
-      subscribePatrolReports(DEFAULT_COMPANY_ID, (liveReports) => {
-        if (liveReports && liveReports.length > 0) setReports(liveReports);
-      }),
-      subscribeIncidents(DEFAULT_COMPANY_ID, (liveIncidents) => {
-        if (liveIncidents && liveIncidents.length > 0) setIncidents(liveIncidents);
-      }),
-      subscribeZones(DEFAULT_COMPANY_ID, (liveZones) => {
-        if (liveZones && liveZones.length > 0) setZones(liveZones);
-      }),
-      subscribeClientCompanies(DEFAULT_COMPANY_ID, (liveCompanies) => {
-        if (liveCompanies && liveCompanies.length > 0) setClientCompanies(liveCompanies);
-      }),
-      subscribeClientAccounts(DEFAULT_COMPANY_ID, (liveAccounts) => {
-        if (liveAccounts && liveAccounts.length > 0) setClientAccounts(liveAccounts);
-      })
-    ];
+    let cleanupListeners: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      if (cleanupListeners) {
+        cleanupListeners();
+        cleanupListeners = null;
+      }
+
+      // Per Firebase Skill: Only attach onSnapshot listeners if auth is ready and user is authenticated
+      if (!currentUser) return;
+
+      const unsubs = [
+        subscribeSites(DEFAULT_COMPANY_ID, (liveSites) => {
+          if (liveSites && liveSites.length > 0) setSites(liveSites);
+        }),
+        subscribeOfficers(DEFAULT_COMPANY_ID, (liveOfficers) => {
+          if (liveOfficers && liveOfficers.length > 0) setOfficers(liveOfficers);
+        }),
+        subscribeAssignments(DEFAULT_COMPANY_ID, (liveAssignments) => {
+          if (liveAssignments && liveAssignments.length > 0) setAssignments(liveAssignments);
+        }),
+        subscribePatrolReports(DEFAULT_COMPANY_ID, (liveReports) => {
+          if (liveReports && liveReports.length > 0) setReports(liveReports);
+        }),
+        subscribeIncidents(DEFAULT_COMPANY_ID, (liveIncidents) => {
+          if (liveIncidents && liveIncidents.length > 0) setIncidents(liveIncidents);
+        }),
+        subscribeZones(DEFAULT_COMPANY_ID, (liveZones) => {
+          if (liveZones && liveZones.length > 0) setZones(liveZones);
+        }),
+        subscribeClientCompanies(DEFAULT_COMPANY_ID, (liveCompanies) => {
+          if (liveCompanies && liveCompanies.length > 0) setClientCompanies(liveCompanies);
+        }),
+        subscribeClientAccounts(DEFAULT_COMPANY_ID, (liveAccounts) => {
+          if (liveAccounts && liveAccounts.length > 0) setClientAccounts(liveAccounts);
+        })
+      ];
+
+      cleanupListeners = () => {
+        unsubs.forEach((unsub) => unsub());
+      };
+    });
 
     return () => {
-      unsubs.forEach((unsub) => unsub());
+      if (cleanupListeners) cleanupListeners();
+      unsubscribeAuth();
     };
   }, []);
 
@@ -984,6 +1004,7 @@ export default function App() {
         companyName={companyConfig.companyName}
         ownerName={companyConfig.ownerName}
         onLogoutAdmin={handleAdminLogout}
+        onOpenContactsModal={() => setIsContactsModalOpen(true)}
       />
 
 
@@ -1322,6 +1343,7 @@ export default function App() {
               onUpdateAdminCredentials={handleUpdateAdminCredentials}
               onOpenMobilePreview={() => setAppMode('field_officer')}
               onResetToDemoDefaults={handleResetToDemoDefaults}
+              onOpenContactsModal={() => setIsContactsModalOpen(true)}
             />
           )}
 
@@ -1348,6 +1370,18 @@ export default function App() {
           checklists={masterChecklists}
           onSaveChecklist={handleSaveMasterChecklists}
           onClose={() => setIsChecklistManagerOpen(false)}
+        />
+      )}
+
+      {/* Manage Control Room Contacts Modal */}
+      {isContactsModalOpen && (
+        <ManageControlRoomContactsModal
+          isOpen={isContactsModalOpen}
+          onClose={() => setIsContactsModalOpen(false)}
+          onSavedNotification={(msg) => {
+            setGlobalFeedback(msg);
+            setTimeout(() => setGlobalFeedback(null), 3500);
+          }}
         />
       )}
 

@@ -9,7 +9,7 @@ import {
   serverTimestamp,
   writeBatch
 } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '../lib/firebase';
+import { db, isFirebaseConfigured, auth } from '../lib/firebase';
 import {
   Site,
   FieldOfficer,
@@ -23,6 +23,53 @@ import {
 } from '../types';
 
 export const DEFAULT_COMPANY_ID = 'rexon-security';
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth?.currentUser?.uid,
+      email: auth?.currentUser?.email,
+      emailVerified: auth?.currentUser?.emailVerified,
+      isAnonymous: auth?.currentUser?.isAnonymous,
+      tenantId: auth?.currentUser?.tenantId,
+      providerInfo: auth?.currentUser?.providerData?.map((provider) => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.warn('[Firestore Operation Notice]', JSON.stringify(errInfo));
+  return errInfo;
+}
 
 /**
  * Deeply normalizes Firestore document payload by removing undefined properties
@@ -63,7 +110,8 @@ export const subscribeSites = (
   onData: (sites: Site[]) => void,
   onError?: (err: Error) => void
 ): (() => void) => {
-  if (!db || !isFirebaseConfigured) return () => {};
+  // Only attach onSnapshot listeners if auth is ready and user is authenticated
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return () => {};
 
   const colRef = collection(db, 'companies', companyId, 'sites');
   const q = query(colRef, orderBy('name', 'asc'));
@@ -78,33 +126,36 @@ export const subscribeSites = (
       onData(sites);
     },
     (error) => {
-      console.error('[Firestore] Sites subscription error:', error);
+      console.warn('[Firestore] Sites subscription notice:', error?.message || error);
       onError?.(error);
     }
   );
 };
 
 export const saveSiteToFirestore = async (companyId: string, site: Site): Promise<void> => {
-  if (!db || !isFirebaseConfigured) {
-    throw new Error('Cloud Firestore is not initialized or configured.');
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
+
+  try {
+    const docRef = doc(db, 'companies', companyId, 'sites', site.id);
+    const payload = {
+      ...sanitizeDataForFirestore(site),
+      updatedAt: serverTimestamp()
+    };
+    await setDoc(docRef, payload, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `companies/${companyId}/sites/${site.id}`);
   }
-
-  const docRef = doc(db, 'companies', companyId, 'sites', site.id);
-  const payload = {
-    ...sanitizeDataForFirestore(site),
-    updatedAt: serverTimestamp()
-  };
-
-  await setDoc(docRef, payload, { merge: true });
 };
 
 export const deleteSiteFromFirestore = async (companyId: string, siteId: string): Promise<void> => {
-  if (!db || !isFirebaseConfigured) {
-    throw new Error('Cloud Firestore is not initialized or configured.');
-  }
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
 
-  const docRef = doc(db, 'companies', companyId, 'sites', siteId);
-  await deleteDoc(docRef);
+  try {
+    const docRef = doc(db, 'companies', companyId, 'sites', siteId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `companies/${companyId}/sites/${siteId}`);
+  }
 };
 
 // ==========================================
@@ -116,7 +167,8 @@ export const subscribeOfficers = (
   onData: (officers: FieldOfficer[]) => void,
   onError?: (err: Error) => void
 ): (() => void) => {
-  if (!db || !isFirebaseConfigured) return () => {};
+  // Only attach onSnapshot listeners if auth is ready and user is authenticated
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return () => {};
 
   const colRef = collection(db, 'companies', companyId, 'officers');
   const q = query(colRef, orderBy('name', 'asc'));
@@ -131,39 +183,47 @@ export const subscribeOfficers = (
       onData(officers);
     },
     (error) => {
-      console.error('[Firestore] Officers subscription error:', error);
+      console.warn('[Firestore] Officers subscription notice:', error?.message || error);
       onError?.(error);
     }
   );
 };
 
 export const saveOfficerToFirestore = async (companyId: string, officer: FieldOfficer): Promise<void> => {
-  if (!db || !isFirebaseConfigured) {
-    throw new Error('Cloud Firestore is not initialized or configured.');
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
+
+  try {
+    const docRef = doc(db, 'companies', companyId, 'officers', officer.id);
+    const payload = {
+      ...sanitizeDataForFirestore(officer),
+      updatedAt: serverTimestamp()
+    };
+    await setDoc(docRef, payload, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `companies/${companyId}/officers/${officer.id}`);
   }
-
-  const docRef = doc(db, 'companies', companyId, 'officers', officer.id);
-  const payload = {
-    ...sanitizeDataForFirestore(officer),
-    updatedAt: serverTimestamp()
-  };
-
-  await setDoc(docRef, payload, { merge: true });
 };
 
 export const deleteOfficerFromFirestore = async (companyId: string, officerId: string): Promise<void> => {
-  if (!db || !isFirebaseConfigured) {
-    throw new Error('Cloud Firestore is not initialized or configured.');
-  }
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
 
-  const docRef = doc(db, 'companies', companyId, 'officers', officerId);
-  await deleteDoc(docRef);
+  try {
+    const docRef = doc(db, 'companies', companyId, 'officers', officerId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `companies/${companyId}/officers/${officerId}`);
+  }
 };
 
 export const saveCompanyConfigToFirestore = async (companyId: string, companyConfig: any): Promise<void> => {
-  if (!db || !isFirebaseConfigured) return;
-  const docRef = doc(db, 'companies', companyId, 'settings', 'general');
-  await setDoc(docRef, { ...sanitizeDataForFirestore(companyConfig), updatedAt: serverTimestamp() }, { merge: true });
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
+
+  try {
+    const docRef = doc(db, 'companies', companyId, 'settings', 'general');
+    await setDoc(docRef, { ...sanitizeDataForFirestore(companyConfig), updatedAt: serverTimestamp() }, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `companies/${companyId}/settings/general`);
+  }
 };
 
 
@@ -176,7 +236,7 @@ export const subscribeAssignments = (
   onData: (assignments: Assignment[]) => void,
   onError?: (err: Error) => void
 ): (() => void) => {
-  if (!db || !isFirebaseConfigured) return () => {};
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return () => {};
 
   const colRef = collection(db, 'companies', companyId, 'assignments');
   const q = query(colRef, orderBy('date', 'desc'));
@@ -191,33 +251,36 @@ export const subscribeAssignments = (
       onData(assignments);
     },
     (error) => {
-      console.error('[Firestore] Assignments subscription error:', error);
+      console.warn('[Firestore] Assignments subscription notice:', error?.message || error);
       onError?.(error);
     }
   );
 };
 
 export const saveAssignmentToFirestore = async (companyId: string, assignment: Assignment): Promise<void> => {
-  if (!db || !isFirebaseConfigured) {
-    throw new Error('Cloud Firestore is not initialized or configured.');
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
+
+  try {
+    const docRef = doc(db, 'companies', companyId, 'assignments', assignment.id);
+    const payload = {
+      ...sanitizeDataForFirestore(assignment),
+      updatedAt: serverTimestamp()
+    };
+    await setDoc(docRef, payload, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `companies/${companyId}/assignments/${assignment.id}`);
   }
-
-  const docRef = doc(db, 'companies', companyId, 'assignments', assignment.id);
-  const payload = {
-    ...sanitizeDataForFirestore(assignment),
-    updatedAt: serverTimestamp()
-  };
-
-  await setDoc(docRef, payload, { merge: true });
 };
 
 export const deleteAssignmentFromFirestore = async (companyId: string, assignmentId: string): Promise<void> => {
-  if (!db || !isFirebaseConfigured) {
-    throw new Error('Cloud Firestore is not initialized or configured.');
-  }
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
 
-  const docRef = doc(db, 'companies', companyId, 'assignments', assignmentId);
-  await deleteDoc(docRef);
+  try {
+    const docRef = doc(db, 'companies', companyId, 'assignments', assignmentId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `companies/${companyId}/assignments/${assignmentId}`);
+  }
 };
 
 // ==========================================
@@ -229,7 +292,7 @@ export const subscribePatrolReports = (
   onData: (reports: PatrolReport[]) => void,
   onError?: (err: Error) => void
 ): (() => void) => {
-  if (!db || !isFirebaseConfigured) return () => {};
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return () => {};
 
   const colRef = collection(db, 'companies', companyId, 'patrolReports');
   const q = query(colRef, orderBy('scheduledDate', 'desc'));
@@ -244,7 +307,7 @@ export const subscribePatrolReports = (
       onData(reports);
     },
     (error) => {
-      console.error('[Firestore] Reports subscription error:', error);
+      console.warn('[Firestore] Reports subscription notice:', error?.message || error);
       onError?.(error);
     }
   );
@@ -255,80 +318,80 @@ export const submitPatrolReportToFirestore = async (
   report: PatrolReport,
   newIncidents?: IncidentRecord[] | IncidentRecord
 ): Promise<void> => {
-  if (!db || !isFirebaseConfigured) {
-    throw new Error('Cloud Firestore is not initialized or configured.');
-  }
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
 
-  const batch = writeBatch(db);
+  try {
+    const batch = writeBatch(db);
 
-  // 1. Report Document (Idempotent by report.id)
-  // Ensure no binary or temporary blob strings are ever stored in Firestore documents
-  const cleanPhotos = (report.photos || [])
-    .filter((p) => p.storagePath || (p.url && !p.url.startsWith('data:') && !p.url.startsWith('blob:')))
-    .map((p) => ({
-      id: p.id,
-      caption: p.caption || '',
-      timestamp: p.timestamp || '',
-      locationName: p.locationName || '',
-      storagePath: p.storagePath || '',
-      url: p.url?.startsWith('http') ? p.url : '',
-      fileName: p.fileName || '',
-      contentType: p.contentType || '',
-      fileSizeBytes: p.fileSizeBytes || 0,
-      uploadedAt: p.uploadedAt || new Date().toISOString(),
-      mediaType: p.mediaType || 'photo',
-      uploadStatus: p.uploadStatus || 'completed'
-    }));
+    // 1. Report Document (Idempotent by report.id)
+    const cleanPhotos = (report.photos || [])
+      .filter((p) => p.storagePath || (p.url && !p.url.startsWith('data:') && !p.url.startsWith('blob:')))
+      .map((p) => ({
+        id: p.id,
+        caption: p.caption || '',
+        timestamp: p.timestamp || '',
+        locationName: p.locationName || '',
+        storagePath: p.storagePath || '',
+        url: p.url?.startsWith('http') ? p.url : '',
+        fileName: p.fileName || '',
+        contentType: p.contentType || '',
+        fileSizeBytes: p.fileSizeBytes || 0,
+        uploadedAt: p.uploadedAt || new Date().toISOString(),
+        mediaType: p.mediaType || 'photo',
+        uploadStatus: p.uploadStatus || 'completed'
+      }));
 
-  const sanitizedReportPayload = {
-    ...report,
-    photos: cleanPhotos,
-    evidenceItems: (report.evidenceItems || []).filter((e) => !!e.storagePath)
-  };
+    const sanitizedReportPayload = {
+      ...report,
+      photos: cleanPhotos,
+      evidenceItems: (report.evidenceItems || []).filter((e) => !!e.storagePath)
+    };
 
-  const reportDocRef = doc(db, 'companies', companyId, 'patrolReports', report.id);
-  batch.set(
-    reportDocRef,
-    {
-      ...sanitizeDataForFirestore(sanitizedReportPayload),
-      createdAt: serverTimestamp()
-    },
-    { merge: true }
-  );
-
-  // 2. Incident Documents if generated during patrol (handles single or multiple incidents)
-  const incidentsList: IncidentRecord[] = Array.isArray(newIncidents)
-    ? newIncidents
-    : newIncidents
-    ? [newIncidents]
-    : report.incidents || [];
-
-  for (const inc of incidentsList) {
-    const incDocRef = doc(db, 'companies', companyId, 'incidents', inc.id);
+    const reportDocRef = doc(db, 'companies', companyId, 'patrolReports', report.id);
     batch.set(
-      incDocRef,
+      reportDocRef,
       {
-        ...sanitizeDataForFirestore(inc),
+        ...sanitizeDataForFirestore(sanitizedReportPayload),
         createdAt: serverTimestamp()
       },
       { merge: true }
     );
+
+    // 2. Incident Documents if generated during patrol
+    const incidentsList: IncidentRecord[] = Array.isArray(newIncidents)
+      ? newIncidents
+      : newIncidents
+      ? [newIncidents]
+      : report.incidents || [];
+
+    for (const inc of incidentsList) {
+      const incDocRef = doc(db, 'companies', companyId, 'incidents', inc.id);
+      batch.set(
+        incDocRef,
+        {
+          ...sanitizeDataForFirestore(inc),
+          createdAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+    }
+
+    // 3. Update Site statistics
+    const siteDocRef = doc(db, 'companies', companyId, 'sites', report.siteId);
+    batch.set(
+      siteDocRef,
+      {
+        lastPatrolTime: report.completedAt || report.actualCheckInTime || 'Completed',
+        securityStatus: incidentsList.length > 0 ? 'incident_reported' : 'normal',
+        updatedAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+
+    await batch.commit();
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `companies/${companyId}/patrolReports/${report.id}`);
   }
-
-  // 3. Update Site statistics
-  const siteDocRef = doc(db, 'companies', companyId, 'sites', report.siteId);
-  batch.set(
-    siteDocRef,
-    {
-      lastPatrolTime: report.completedAt || report.actualCheckInTime || 'Completed',
-      securityStatus: incidentsList.length > 0 ? 'incident_reported' : 'normal',
-      updatedAt: serverTimestamp()
-    },
-    { merge: true }
-  );
-
-
-  await batch.commit();
 };
 
 // ==========================================
@@ -340,7 +403,7 @@ export const subscribeIncidents = (
   onData: (incidents: IncidentRecord[]) => void,
   onError?: (err: Error) => void
 ): (() => void) => {
-  if (!db || !isFirebaseConfigured) return () => {};
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return () => {};
 
   const colRef = collection(db, 'companies', companyId, 'incidents');
   const q = query(colRef, orderBy('reportedAt', 'desc'));
@@ -355,24 +418,25 @@ export const subscribeIncidents = (
       onData(incidents);
     },
     (error) => {
-      console.error('[Firestore] Incidents subscription error:', error);
+      console.warn('[Firestore] Incidents subscription notice:', error?.message || error);
       onError?.(error);
     }
   );
 };
 
 export const saveIncidentToFirestore = async (companyId: string, incident: IncidentRecord): Promise<void> => {
-  if (!db || !isFirebaseConfigured) {
-    throw new Error('Cloud Firestore is not initialized or configured.');
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
+
+  try {
+    const docRef = doc(db, 'companies', companyId, 'incidents', incident.id);
+    const payload = {
+      ...sanitizeDataForFirestore(incident),
+      updatedAt: serverTimestamp()
+    };
+    await setDoc(docRef, payload, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `companies/${companyId}/incidents/${incident.id}`);
   }
-
-  const docRef = doc(db, 'companies', companyId, 'incidents', incident.id);
-  const payload = {
-    ...sanitizeDataForFirestore(incident),
-    updatedAt: serverTimestamp()
-  };
-
-  await setDoc(docRef, payload, { merge: true });
 };
 
 // ==========================================
@@ -384,7 +448,7 @@ export const subscribeZones = (
   onData: (zones: PatrolZone[]) => void,
   onError?: (err: Error) => void
 ): (() => void) => {
-  if (!db || !isFirebaseConfigured) return () => {};
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return () => {};
 
   const colRef = collection(db, 'companies', companyId, 'zones');
   const q = query(colRef, orderBy('name', 'asc'));
@@ -399,28 +463,32 @@ export const subscribeZones = (
       onData(zones);
     },
     (error) => {
-      console.error('[Firestore] Zones subscription error:', error);
+      console.warn('[Firestore] Zones subscription notice:', error?.message || error);
       onError?.(error);
     }
   );
 };
 
 export const saveZoneToFirestore = async (companyId: string, zone: PatrolZone): Promise<void> => {
-  if (!db || !isFirebaseConfigured) {
-    throw new Error('Cloud Firestore is not initialized or configured.');
-  }
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
 
-  const docRef = doc(db, 'companies', companyId, 'zones', zone.id);
-  await setDoc(docRef, { ...sanitizeDataForFirestore(zone), updatedAt: serverTimestamp() }, { merge: true });
+  try {
+    const docRef = doc(db, 'companies', companyId, 'zones', zone.id);
+    await setDoc(docRef, { ...sanitizeDataForFirestore(zone), updatedAt: serverTimestamp() }, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `companies/${companyId}/zones/${zone.id}`);
+  }
 };
 
 export const deleteZoneFromFirestore = async (companyId: string, zoneId: string): Promise<void> => {
-  if (!db || !isFirebaseConfigured) {
-    throw new Error('Cloud Firestore is not initialized or configured.');
-  }
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
 
-  const docRef = doc(db, 'companies', companyId, 'zones', zoneId);
-  await deleteDoc(docRef);
+  try {
+    const docRef = doc(db, 'companies', companyId, 'zones', zoneId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `companies/${companyId}/zones/${zoneId}`);
+  }
 };
 
 // ==========================================
@@ -441,8 +509,8 @@ export const migrateLocalDataToFirestore = async (
   companyId: string,
   data: MigrationPayload
 ): Promise<{ count: number }> => {
-  if (!db || !isFirebaseConfigured) {
-    throw new Error('Cannot migrate: Cloud Firestore is not configured.');
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) {
+    throw new Error('Cannot migrate: Cloud Firestore requires an authenticated user session.');
   }
 
   const firestoreDb = db as import('firebase/firestore').Firestore;
@@ -504,7 +572,7 @@ export const subscribeClientCompanies = (
   onUpdate: (companies: ClientCompany[]) => void,
   onError?: (error: Error) => void
 ) => {
-  if (!db || !isFirebaseConfigured) return () => {};
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return () => {};
 
   const colRef = collection(db, 'companies', companyId, 'clientCompanies');
   return onSnapshot(
@@ -517,7 +585,7 @@ export const subscribeClientCompanies = (
       onUpdate(companies);
     },
     (err) => {
-      console.warn('[Firestore] Error subscribing to client companies:', err.message);
+      console.warn('[Firestore] Client companies subscription notice:', err?.message || err);
       onError?.(err);
     }
   );
@@ -527,24 +595,32 @@ export const saveClientCompanyToFirestore = async (
   companyId: string,
   clientCompany: ClientCompany
 ): Promise<void> => {
-  if (!db || !isFirebaseConfigured) return;
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
 
-  const docRef = doc(db, 'companies', companyId, 'clientCompanies', clientCompany.id);
-  const payload = sanitizeDataForFirestore({
-    ...clientCompany,
-    updatedAt: serverTimestamp()
-  });
-  await setDoc(docRef, payload, { merge: true });
+  try {
+    const docRef = doc(db, 'companies', companyId, 'clientCompanies', clientCompany.id);
+    const payload = sanitizeDataForFirestore({
+      ...clientCompany,
+      updatedAt: serverTimestamp()
+    });
+    await setDoc(docRef, payload, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `companies/${companyId}/clientCompanies/${clientCompany.id}`);
+  }
 };
 
 export const deleteClientCompanyFromFirestore = async (
   companyId: string,
   clientCompanyId: string
 ): Promise<void> => {
-  if (!db || !isFirebaseConfigured) return;
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
 
-  const docRef = doc(db, 'companies', companyId, 'clientCompanies', clientCompanyId);
-  await deleteDoc(docRef);
+  try {
+    const docRef = doc(db, 'companies', companyId, 'clientCompanies', clientCompanyId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `companies/${companyId}/clientCompanies/${clientCompanyId}`);
+  }
 };
 
 // ==========================================
@@ -556,7 +632,7 @@ export const subscribeClientAccounts = (
   onUpdate: (accounts: CompanyClientAccount[]) => void,
   onError?: (error: Error) => void
 ) => {
-  if (!db || !isFirebaseConfigured) return () => {};
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return () => {};
 
   const colRef = collection(db, 'companies', companyId, 'clientAccounts');
   return onSnapshot(
@@ -569,7 +645,7 @@ export const subscribeClientAccounts = (
       onUpdate(accounts);
     },
     (err) => {
-      console.warn('[Firestore] Error subscribing to client accounts:', err.message);
+      console.warn('[Firestore] Client accounts subscription notice:', err?.message || err);
       onError?.(err);
     }
   );
@@ -579,23 +655,32 @@ export const saveClientAccountToFirestore = async (
   companyId: string,
   account: CompanyClientAccount
 ): Promise<void> => {
-  if (!db || !isFirebaseConfigured) return;
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
 
-  const docRef = doc(db, 'companies', companyId, 'clientAccounts', account.id);
-  const payload = sanitizeDataForFirestore({
-    ...account,
-    updatedAt: serverTimestamp()
-  });
-  await setDoc(docRef, payload, { merge: true });
+  try {
+    const docRef = doc(db, 'companies', companyId, 'clientAccounts', account.id);
+    const payload = sanitizeDataForFirestore({
+      ...account,
+      updatedAt: serverTimestamp()
+    });
+    await setDoc(docRef, payload, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `companies/${companyId}/clientAccounts/${account.id}`);
+  }
 };
 
 export const deleteClientAccountFromFirestore = async (
   companyId: string,
   accountId: string
 ): Promise<void> => {
-  if (!db || !isFirebaseConfigured) return;
+  if (!db || !isFirebaseConfigured || !auth?.currentUser) return;
 
-  const docRef = doc(db, 'companies', companyId, 'clientAccounts', accountId);
-  await deleteDoc(docRef);
+  try {
+    const docRef = doc(db, 'companies', companyId, 'clientAccounts', accountId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `companies/${companyId}/clientAccounts/${accountId}`);
+  }
 };
+
 

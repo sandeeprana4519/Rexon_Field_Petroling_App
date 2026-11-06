@@ -40,7 +40,7 @@ import { OfficerLoginView } from './OfficerLoginView';
 import { OfficerProfileModal } from './OfficerProfileModal';
 import { loadFromStorage, saveToStorage, STORAGE_KEYS } from '../utils/storage';
 import { useLiveClock } from '../utils/dateUtils';
-import { getCallUrl, getWhatsAppUrl, REXON_ADMIN_CONTACT, WhatsAppIcon } from '../utils/contactUtils';
+import { getCallUrl, getWhatsAppUrl, REXON_ADMIN_CONTACT, WhatsAppIcon, useControlRoomContacts } from '../utils/contactUtils';
 import { getGoogleMapsNavUrl, getGoogleMapsViewUrl } from '../utils/mapUtils';
 import { PWAInstallButton } from './PWAInstallButton';
 import { GpsGeofenceValidationModal } from './GpsGeofenceValidationModal';
@@ -73,6 +73,8 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
   onSubmitPatrolReport,
   onViewReportInOwner
 }) => {
+  const { contacts: controlRoomContacts } = useControlRoomContacts();
+
   // Authentication State: Officer must log in with Email or Registration ID & Password
   const [authenticatedOfficerId, setAuthenticatedOfficerId] = useState<string | null>(() => {
     const storedId = loadFromStorage<string | null>(STORAGE_KEYS.OFFICER_AUTH, null);
@@ -293,12 +295,12 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
           <div className="flex items-center gap-2 truncate">
             <span className="w-2 h-2 rounded-full bg-[#1B5E20] animate-pulse shrink-0" />
             <span className="text-[#8B735B] truncate">
-              कंट्रोल रूम हेल्पलाइन (Admin Desk): <strong className="text-[#4B3621] font-mono">{REXON_ADMIN_CONTACT.phone}</strong>
+              कंट्रोल रूम हेल्पलाइन (Admin Desk): <strong className="text-[#4B3621] font-mono">{controlRoomContacts.helplinePhone}</strong>
             </span>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <a
-              href={getCallUrl(REXON_ADMIN_CONTACT.phone)}
+              href={getCallUrl(controlRoomContacts.callAdminPhone)}
               className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-[#F0E8DD] text-[#4B3621] border border-[#E7DED2] rounded-lg font-bold text-[11px] shadow-2xs"
               title="Call Control Room"
             >
@@ -306,7 +308,7 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
               <span>Call Admin</span>
             </a>
             <a
-              href={getWhatsAppUrl(REXON_ADMIN_CONTACT.phone, `नमस्ते REXON कंट्रोल रूम, मैं फील्ड ऑफिसर ${activeOfficer.name} (${activeOfficer.badgeNumber}) ड्यूटी से रिपोर्ट कर रहा हूँ।`)}
+              href={getWhatsAppUrl(controlRoomContacts.whatsappNumber, `नमस्ते REXON कंट्रोल रूम, मैं फील्ड ऑफिसर ${activeOfficer.name} (${activeOfficer.badgeNumber}) ड्यूटी से रिपोर्ट कर रहा हूँ।`)}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#25D366] hover:bg-[#1EBE5D] text-white rounded-lg font-bold text-[11px] shadow-2xs"
@@ -847,18 +849,18 @@ export const FieldOfficerMode: React.FC<FieldOfficerModeProps> = ({
               <div className="p-2.5 rounded-xl bg-[#F0E8DD] border border-[#D5C2AD] flex items-center justify-between gap-2 text-xs">
                 <div>
                   <div className="font-bold text-[#4B3621] text-[11px]">REXON कंट्रोल रूम (Admin Desk)</div>
-                  <div className="text-[10px] text-[#8B735B] font-mono">{REXON_ADMIN_CONTACT.phone}</div>
+                  <div className="text-[10px] text-[#8B735B] font-mono">{controlRoomContacts.helplinePhone}</div>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <a
-                    href={getCallUrl(REXON_ADMIN_CONTACT.phone)}
+                    href={getCallUrl(controlRoomContacts.callAdminPhone)}
                     className="p-1.5 rounded-lg bg-white text-[#4B3621] border border-[#E7DED2] font-bold text-xs"
                     title="Call Control Room"
                   >
                     <Phone className="w-3.5 h-3.5 text-[#6F4E37]" />
                   </a>
                   <a
-                    href={getWhatsAppUrl(REXON_ADMIN_CONTACT.phone, `नमस्ते REXON एडमिन, मैं फील्ड ऑफिसर ${activeOfficer.name} साइट ${inspectingSite.name} से सहायता हेतु संपर्क कर रहा हूँ।`)}
+                    href={getWhatsAppUrl(controlRoomContacts.whatsappNumber, `नमस्ते REXON एडमिन, मैं फील्ड ऑफिसर ${activeOfficer.name} साइट ${inspectingSite.name} से सहायता हेतु संपर्क कर रहा हूँ।`)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-1.5 rounded-lg bg-[#25D366] text-white font-bold text-xs"
