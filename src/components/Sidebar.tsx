@@ -9,7 +9,8 @@ import {
   Settings,
   ShieldCheck,
   Briefcase,
-  X
+  X,
+  LogOut
 } from 'lucide-react';
 import { NavigationTab } from '../types';
 
@@ -21,6 +22,7 @@ interface SidebarProps {
   activeOfficersCount: number;
   isOpenMobile: boolean;
   onCloseMobile: () => void;
+  onLogoutAdmin?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -30,7 +32,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   missedPatrolsCount,
   activeOfficersCount,
   isOpenMobile,
-  onCloseMobile
+  onCloseMobile,
+  onLogoutAdmin
 }) => {
   const navItems: {
     id: NavigationTab;
@@ -183,6 +186,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <p className="text-[11px] text-[#8B735B] leading-snug">
               Owner console connected. Geofence radius tolerance active at 50m.
             </p>
+
+            {onLogoutAdmin && (
+              <button
+                type="button"
+                onClick={onLogoutAdmin}
+                className="w-full mt-2 py-1.5 px-2.5 rounded-lg bg-[#FFFFFF] hover:bg-[#FFEBEE] text-[#C62828] border border-[#E7DED2] hover:border-[#FFCDD2] text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+                title="Log Out of Admin Operations Portal"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Log Out (लॉग आउट)</span>
+              </button>
+            )}
           </div>
         </div>
       </aside>

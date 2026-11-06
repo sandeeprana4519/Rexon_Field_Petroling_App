@@ -14,55 +14,72 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // Role verification (sourced from server-side user document or custom claims)
+    // Single Fixed Super Admin: Verified via pre-configured admin email OR Firestore user role
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.email != null && (
+          request.auth.token.email == 'sandeeprana4519@gmail.com' ||
+          request.auth.token.email == 'admin@rexonsecurity.com' ||
+          request.auth.token.email == 'admin@rexon.com'
+        )) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         getUserData().role == 'admin')
+      );
+    }
+
+    // Multi-tenant company membership verification
     function isCompanyMember(companyId) {
       return isAuthenticated() && (
-        (request.auth.token.companyId != null && request.auth.token.companyId == companyId) ||
-        (getUserData().companyId != null && getUserData().companyId == companyId)
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          (request.auth.token.companyId != null && request.auth.token.companyId == companyId) ||
+          (getUserData().companyId != null && getUserData().companyId == companyId)
+        ))
       );
     }
 
     function isAdmin(companyId) {
-      return isCompanyMember(companyId) && (
-        request.auth.token.role == 'admin' ||
-        getUserData().role == 'admin'
-      );
+      return isCompanyMember(companyId) && isSuperAdmin();
     }
 
-    function isOfficer(companyId) {
-      return isCompanyMember(companyId) && (
-        request.auth.token.role == 'field_officer' ||
-        getUserData().role == 'field_officer'
-      );
+    // Field Officer verification: Must belong to company and be approved by Super Admin
+    function isApprovedOfficer(companyId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().companyId == companyId &&
+        (request.auth.token.role == 'field_officer' || getUserData().role == 'field_officer') &&
+        (getUserData().isApproved == true || getUserData().isApproved == null);
     }
 
     // ==========================================
     // 1. USER PROFILES & ROLES (/users/{userId})
     // ==========================================
     match /users/{userId} {
-      // Users can read their own profile; admins can read all profiles in their company
+      // Users can read their own profile; Super Admins can read all profiles
       allow read: if isAuthenticated() && (
-        request.auth.uid == userId ||
-        (getUserData().role == 'admin' && getUserData().companyId == resource.data.companyId)
+        request.auth.uid == userId || isSuperAdmin()
       );
 
-      // Only an authenticated admin can provision or assign roles
+      // Only Super Admin can provision user documents, or the fixed admin on first boot
       allow create: if isAuthenticated() && (
-        // Initial setup for the first admin user
-        !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
-        getUserData().role == 'admin'
+        isSuperAdmin() ||
+        (request.auth.uid == userId && (
+          request.auth.token.email == 'sandeeprana4519@gmail.com' ||
+          request.auth.token.email == 'admin@rexonsecurity.com' ||
+          request.auth.token.email == 'admin@rexon.com'
+        ))
       );
 
-      // Critical Security Rule: Users can NEVER self-elevate roles or change companyId
+      // Critical Security Rule: Non-admins can NEVER self-elevate roles or change approval status
       allow update: if isAuthenticated() && (
-        getUserData().role == 'admin' ||
+        isSuperAdmin() ||
         (
           request.auth.uid == userId &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'companyId', 'officerId'])
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'companyId', 'officerId', 'isApproved'])
         )
       );
 
-      allow delete: if isAuthenticated() && getUserData().role == 'admin';
+      allow delete: if isSuperAdmin();
     }
 
     // ==========================================
@@ -70,36 +87,36 @@ service cloud.firestore {
     // ==========================================
     match /companies/{companyId} {
       allow read: if isCompanyMember(companyId);
-      allow write: if isAdmin(companyId);
+      allow write: if isSuperAdmin();
 
-      // SITES: Officers have read-only view; only Admins can create/edit/delete
+      // SITES: Strictly managed by Super Admin ONLY (Create/Update/Delete)
+      // Field officers and clients have read-only visibility
       match /sites/{siteId} {
         allow read: if isCompanyMember(companyId);
-        allow write: if isAdmin(companyId);
+        allow write: if isSuperAdmin();
       }
 
-      // OFFICERS: Managed exclusively by Admins; Officers can view directory
+      // OFFICERS: Managed EXCLUSIVELY by Super Admin
+      // No officer or normal user can add, edit, or approve officers
       match /officers/{officerId} {
         allow read: if isCompanyMember(companyId);
-        allow write: if isAdmin(companyId);
+        allow write: if isSuperAdmin();
       }
 
-      // ASSIGNMENTS: Admins manage; Officers read their schedules
+      // ASSIGNMENTS: Managed exclusively by Super Admin; Officers read their schedules
       match /assignments/{assignmentId} {
         allow read: if isCompanyMember(companyId);
-        allow write: if isAdmin(companyId);
+        allow write: if isSuperAdmin();
       }
 
       // PATROL REPORTS:
-      // - Admins can read all reports, edit verification status, or delete
-      // - Field officers can ONLY read and create reports for their own assigned identity
-      // - Field officers cannot read reports belonging to other officers
-      // - No user can change role or bypass server-side security
+      // - Super Admin can read all reports, edit verification status, or delete
+      // - Approved Field officers can ONLY create and read reports for their own assigned identity
       match /patrolReports/{reportId} {
         allow read: if isCompanyMember(companyId) && (
-          isAdmin(companyId) ||
+          isSuperAdmin() ||
           (
-            isOfficer(companyId) && (
+            isApprovedOfficer(companyId) && (
               resource.data.officerId == getUserData().officerId ||
               resource.data.officerId == request.auth.uid
             )
@@ -114,9 +131,9 @@ service cloud.firestore {
         );
 
         allow create: if isCompanyMember(companyId) && (
-          isAdmin(companyId) ||
+          isSuperAdmin() ||
           (
-            isOfficer(companyId) &&
+            isApprovedOfficer(companyId) &&
             request.resource.data.officerId != null &&
             (
               request.resource.data.officerId == getUserData().officerId ||
@@ -129,9 +146,9 @@ service cloud.firestore {
         );
 
         allow update: if isCompanyMember(companyId) && (
-          isAdmin(companyId) ||
+          isSuperAdmin() ||
           (
-            isOfficer(companyId) &&
+            isApprovedOfficer(companyId) &&
             (
               resource.data.officerId == getUserData().officerId ||
               resource.data.officerId == request.auth.uid
@@ -139,34 +156,34 @@ service cloud.firestore {
           )
         );
 
-        allow delete: if isAdmin(companyId);
+        allow delete: if isSuperAdmin();
       }
 
-      // INCIDENTS: Any company member can log an incident; only Admins can resolve or delete
+      // INCIDENTS: Super Admin full control; Approved Officers can log incidents
       match /incidents/{incidentId} {
         allow read: if isCompanyMember(companyId);
-        allow create: if isCompanyMember(companyId);
-        allow update, delete: if isAdmin(companyId);
+        allow create: if isSuperAdmin() || isApprovedOfficer(companyId);
+        allow update, delete: if isSuperAdmin();
       }
 
-      // ZONES: Sector configuration managed exclusively by Admins
+      // ZONES: Sector configuration managed exclusively by Super Admin
       match /zones/{zoneId} {
         allow read: if isCompanyMember(companyId);
-        allow write: if isAdmin(companyId);
+        allow write: if isSuperAdmin();
       }
 
-      // CLIENT COMPANIES: Managed by Admins; Client accounts can view their registered profile
+      // CLIENT COMPANIES: Managed exclusively by Super Admin
       match /clientCompanies/{clientCompanyId} {
         allow read: if isCompanyMember(companyId);
-        allow write: if isAdmin(companyId);
+        allow write: if isSuperAdmin();
       }
 
-      // CLIENT ACCOUNTS: Managed by Admins; Client owners/HR can view their own profile
+      // CLIENT ACCOUNTS: Managed exclusively by Super Admin
       match /clientAccounts/{accountId} {
         allow read: if isCompanyMember(companyId) && (
-          isAdmin(companyId) || request.auth.uid == accountId
+          isSuperAdmin() || request.auth.uid == accountId
         );
-        allow write: if isAdmin(companyId);
+        allow write: if isSuperAdmin();
       }
     }
   }

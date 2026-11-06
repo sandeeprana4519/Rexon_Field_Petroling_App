@@ -22,7 +22,8 @@ import {
   Eye,
   EyeOff,
   Trash2,
-  Compass
+  Compass,
+  ShieldCheck
 } from 'lucide-react';
 import { FieldOfficer, Site, OfficerShift, OfficerEmploymentStatus, PatrolReport, Assignment, PatrolZone } from '../types';
 import { DEMO_AREAS } from '../data/demoData';
@@ -92,7 +93,8 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
     phone: '',
     area: availableZoneList[0] || (DEMO_AREAS[0] as string),
     shift: 'Day' as OfficerShift,
-    employmentStatus: 'active' as OfficerEmploymentStatus
+    employmentStatus: 'active' as OfficerEmploymentStatus,
+    isApproved: true
   });
 
 
@@ -133,7 +135,8 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
       phone: '+1 (555) 301-4400',
       area: availableZoneList[0] || 'Area A - North Industrial',
       shift: 'Day',
-      employmentStatus: 'active'
+      employmentStatus: 'active',
+      isApproved: true
     });
     setIsFormModalOpen(true);
   };
@@ -148,7 +151,8 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
       phone: officer.phone,
       area: officer.area || availableZoneList[0] || 'Area A - North Industrial',
       shift: officer.shift,
-      employmentStatus: officer.employmentStatus
+      employmentStatus: officer.employmentStatus,
+      isApproved: officer.isApproved !== false
     });
     setIsFormModalOpen(true);
   };
@@ -175,6 +179,7 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
       status: formData.employmentStatus === 'active' ? 'on_duty' : 'off_duty',
       employmentStatus: formData.employmentStatus,
       isActive: formData.employmentStatus === 'active',
+      isApproved: formData.isApproved,
       assignedSiteIds: editingOfficer ? editingOfficer.assignedSiteIds : [],
       batteryPercent: editingOfficer ? editingOfficer.batteryPercent : 95,
       lastCheckInTime: editingOfficer ? editingOfficer.lastCheckInTime : 'Just added',
@@ -759,6 +764,30 @@ export const FieldOfficersView: React.FC<FieldOfficersViewProps> = ({
                   <option value="on_leave">On Leave / Rest Day</option>
                   <option value="deactivated">Deactivated</option>
                 </select>
+              </div>
+
+              {/* Strict Admin Approval Toggle */}
+              <div className="p-3 bg-[#FAF7F2] rounded-xl border border-[#D5C2AD] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-[#2E7D32]" />
+                  <div>
+                    <div className="font-bold text-[#4B3621] text-xs">
+                      Admin Approval Status (एडमिन अप्रूवल)
+                    </div>
+                    <div className="text-[10px] text-[#8B735B]">
+                      केवल स्वीकृत ऑफिसर्स ही मोबाइल ऐप में लॉगिन कर सकेंगे
+                    </div>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-[#2E7D32]">
+                  <input
+                    type="checkbox"
+                    checked={formData.isApproved}
+                    onChange={(e) => setFormData({ ...formData, isApproved: e.target.checked })}
+                    className="w-4 h-4 text-[#6F4E37] rounded border-[#D5C2AD] focus:ring-[#6F4E37]"
+                  />
+                  <span>{formData.isApproved ? 'Approved (स्वीकृत)' : 'Pending (अस्वीकृत)'}</span>
+                </label>
               </div>
 
               <div className="pt-3 border-t border-[#E7DED2] flex items-center justify-between gap-2">

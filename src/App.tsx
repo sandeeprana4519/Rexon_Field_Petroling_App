@@ -49,6 +49,7 @@ import { ZaxonOwnerApp } from './components/zaxon/ZaxonOwnerApp';
 import { ShieldCheck, FileSpreadsheet, AlertTriangle, ArrowUpRight, Smartphone, LogOut, Compass, Download } from 'lucide-react';
 import { isFirebaseConfigured, auth } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { signOutUser, subscribeToAuth, AppUserProfile } from './services/authService';
 import { downloadPatrolReportsCSV } from './utils/csvExport';
 import { downloadOperationsAuditPDF } from './utils/pdfExport';
 import {
@@ -84,6 +85,7 @@ export default function App() {
   const [selectedOfficerPersonaId, setSelectedOfficerPersonaId] = useState<string>('off-sandeep');
 
   // Admin Authentication State
+  const [authProfile, setAuthProfile] = useState<AppUserProfile | null>(null);
   const [adminCredentials, setAdminCredentials] = useState<AdminCredentials>(() =>
     loadFromStorage(STORAGE_KEYS.ADMIN_CREDENTIALS, DEFAULT_ADMIN_CREDENTIALS)
   );
@@ -91,15 +93,36 @@ export default function App() {
     return loadFromStorage<boolean>(STORAGE_KEYS.ADMIN_AUTH, false);
   });
 
-  const handleAdminLoginSuccess = () => {
+  // Real-time Firebase Authentication listener
+  useEffect(() => {
+    const unsubscribeAuth = subscribeToAuth((session) => {
+      if (session.user || session.firebaseUser) {
+        setAuthProfile(session.user);
+        setIsAdminAuthenticated(true);
+      } else if (session.isFirebaseBacked) {
+        // If real Firebase Auth is configured and user logged out, clear admin access
+        setAuthProfile(null);
+        setIsAdminAuthenticated(false);
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+    };
+  }, []);
+
+  const handleAdminLoginSuccess = (profile?: AppUserProfile) => {
+    if (profile) setAuthProfile(profile);
     setIsAdminAuthenticated(true);
     saveToStorage(STORAGE_KEYS.ADMIN_AUTH, true);
     setGlobalFeedback('एडमिन ऑपरेशन्स पोर्टल में आपका स्वागत है (Logged in to Admin Operations Console).');
     setTimeout(() => setGlobalFeedback(null), 3000);
   };
 
-  const handleAdminLogout = () => {
+  const handleAdminLogout = async () => {
+    await signOutUser();
     setIsAdminAuthenticated(false);
+    setAuthProfile(null);
     saveToStorage(STORAGE_KEYS.ADMIN_AUTH, false);
     setGlobalFeedback('एडमिन पोर्टल से सफलतापूर्वक लॉग आउट हुए (Logged out of Admin Portal).');
     setTimeout(() => setGlobalFeedback(null), 3000);
@@ -1002,7 +1025,7 @@ export default function App() {
         onRefreshData={handleRefreshData}
         isRefreshing={isRefreshing}
         companyName={companyConfig.companyName}
-        ownerName={companyConfig.ownerName}
+        ownerName={authProfile?.displayName || authProfile?.email || companyConfig.ownerName}
         onLogoutAdmin={handleAdminLogout}
         onOpenContactsModal={() => setIsContactsModalOpen(true)}
       />
@@ -1019,6 +1042,7 @@ export default function App() {
           activeOfficersCount={activeOfficersCount}
           isOpenMobile={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
+          onLogoutAdmin={handleAdminLogout}
         />
 
         {/* Center Main Content Area */}

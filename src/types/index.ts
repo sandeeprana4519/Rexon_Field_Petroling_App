@@ -181,6 +181,7 @@ export interface FieldOfficer {
   status: OfficerStatus;
   employmentStatus: OfficerEmploymentStatus;
   isActive: boolean;
+  isApproved?: boolean;
   assignedSiteIds: string[];
   batteryPercent: number;
   lastCheckInTime: string;

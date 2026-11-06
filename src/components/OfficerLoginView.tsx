@@ -63,9 +63,15 @@ export const OfficerLoginView: React.FC<OfficerLoginViewProps> = ({
         return;
       }
 
-      if (matched.employmentStatus === 'deactivated') {
+      if (matched.isApproved === false) {
         setIsSubmitting(false);
-        setErrorMessage(`Account for "${matched.name}" is deactivated. Please contact your security supervisor.`);
+        setErrorMessage('Access Denied / Not Approved by Admin: आपका खाता एडमिन द्वारा अप्रूव्ड (Approved) नहीं है। कृपया कंट्रोल रूम एडमिन से संपर्क करें।');
+        return;
+      }
+
+      if (matched.employmentStatus === 'deactivated' || matched.isActive === false) {
+        setIsSubmitting(false);
+        setErrorMessage(`Access Denied: ऑफिसर "${matched.name}" का खाता निष्क्रिय (Deactivated) है। कृपया अपने सुपरवाइज़र से संपर्क करें।`);
         return;
       }
 
