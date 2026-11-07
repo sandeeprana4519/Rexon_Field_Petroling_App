@@ -10,6 +10,8 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { CompanyClientAccount } from '../../types';
+import { signInWithEmail, parseAuthError } from '../../services/authService';
+import { isFirebaseConfigured } from '../../lib/firebase';
 
 interface ZaxonOwnerLoginViewProps {
   accounts: CompanyClientAccount[];
@@ -30,8 +32,9 @@ export const ZaxonOwnerLoginView: React.FC<ZaxonOwnerLoginViewProps> = ({
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -43,6 +46,67 @@ export const ZaxonOwnerLoginView: React.FC<ZaxonOwnerLoginViewProps> = ({
       return;
     }
 
+    setIsSubmitting(true);
+
+    if (isFirebaseConfigured) {
+      try {
+        let authEmail = cleanId;
+        const matched = accounts.find(
+          (a) =>
+            a.loginId.toLowerCase() === cleanId ||
+            (a.code && a.code.toLowerCase() === cleanId) ||
+            (a.companyId && a.companyId.toLowerCase() === cleanId)
+        );
+
+        if (matched && matched.email) {
+          authEmail = matched.email.trim();
+        }
+
+        const profile = await signInWithEmail(authEmail, cleanPass);
+
+        if (profile.role === 'admin') {
+          setIsSubmitting(false);
+          onSwitchToAdmin();
+          return;
+        }
+
+        const targetAccount: CompanyClientAccount = matched || {
+          id: `acc-${profile.companyId || profile.uid}`,
+          companyId: profile.companyId,
+          companyName: profile.displayName || 'Authorized Client Company',
+          code: 'CL-AUTH',
+          loginId: cleanId,
+          password: cleanPass,
+          name: profile.displayName || 'Company Representative',
+          fullName: profile.displayName || 'Company Representative',
+          email: profile.email,
+          phone: '+91 98110 00000',
+          role: 'company_portal',
+          assignedSiteIds: [profile.companyId],
+          isActive: true,
+          createdAt: new Date().toISOString()
+        };
+
+        setIsSubmitting(false);
+        onLoginSuccess(targetAccount);
+        return;
+      } catch (authErr: any) {
+        const matchedLocal = accounts.find(
+          (a) =>
+            a.loginId.toLowerCase() === cleanId ||
+            (a.code && a.code.toLowerCase() === cleanId) ||
+            (a.companyId && a.companyId.toLowerCase() === cleanId)
+        );
+
+        if (!matchedLocal) {
+          setIsSubmitting(false);
+          setErrorMessage(parseAuthError(authErr));
+          return;
+        }
+      }
+    }
+
+    // Local / fallback account match
     const matchedAccount = accounts.find(
       (a) =>
         a.loginId.toLowerCase() === cleanId ||
@@ -51,21 +115,25 @@ export const ZaxonOwnerLoginView: React.FC<ZaxonOwnerLoginViewProps> = ({
     );
 
     if (!matchedAccount) {
+      setIsSubmitting(false);
       setErrorMessage('Login ID not found. Please contact your REXON Administrator.');
       return;
     }
 
     if (!matchedAccount.isActive) {
+      setIsSubmitting(false);
       setErrorMessage('This account is currently deactivated. Please contact your Administrator.');
       return;
     }
 
     if (matchedAccount.password !== cleanPass) {
+      setIsSubmitting(false);
       setErrorMessage('Incorrect password. Please verify and try again.');
       return;
     }
 
     // Success
+    setIsSubmitting(false);
     onLoginSuccess(matchedAccount);
   };
 

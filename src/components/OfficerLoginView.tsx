@@ -10,6 +10,8 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { FieldOfficer } from '../types';
+import { signInWithEmail, parseAuthError } from '../services/authService';
+import { isFirebaseConfigured } from '../lib/firebase';
 
 interface OfficerLoginViewProps {
   officers: FieldOfficer[];
@@ -28,7 +30,7 @@ export const OfficerLoginView: React.FC<OfficerLoginViewProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -47,8 +49,69 @@ export const OfficerLoginView: React.FC<OfficerLoginViewProps> = ({
 
     setIsSubmitting(true);
 
+    if (isFirebaseConfigured) {
+      try {
+        let authEmail = cleanId;
+        const matched = officers.find((o) => {
+          const emailMatch = o.email && o.email.toLowerCase() === cleanId;
+          const empIdMatch = o.employeeId && o.employeeId.toLowerCase() === cleanId;
+          const badgeMatch = o.badgeNumber && o.badgeNumber.toLowerCase() === cleanId;
+          const nameMatch = o.name && o.name.toLowerCase() === cleanId;
+          return emailMatch || empIdMatch || badgeMatch || nameMatch;
+        });
+
+        if (matched && matched.email) {
+          authEmail = matched.email.trim();
+        }
+
+        const profile = await signInWithEmail(authEmail, cleanPass);
+
+        const activeOfficer: FieldOfficer =
+          officers.find((o) => o.id === profile.officerId || o.email?.toLowerCase() === profile.email.toLowerCase()) ||
+          matched ||
+          {
+            id: profile.officerId || profile.uid,
+            employeeId: 'REX-OFF-AUTH',
+            badgeNumber: 'OFF-AUTH',
+            name: profile.displayName || 'Field Officer',
+            phone: '+91 98100 00000',
+            email: profile.email,
+            area: 'Industrial Sector 18',
+            assignedSiteIds: [] as string[],
+            status: 'on_duty' as const,
+            employmentStatus: 'active' as const,
+            isActive: true,
+            isApproved: true,
+            shift: 'Day' as const,
+            batteryPercent: 95,
+            lastCheckInTime: 'Just now',
+            currentActivity: 'Logged in to duty',
+            patrolsCompletedToday: 0,
+            demoGpsVerified: true
+          };
+
+        setIsSubmitting(false);
+        onLoginSuccess(activeOfficer);
+        return;
+      } catch (authErr: any) {
+        const matched = officers.find((o) => {
+          const emailMatch = o.email && o.email.toLowerCase() === cleanId;
+          const empIdMatch = o.employeeId && o.employeeId.toLowerCase() === cleanId;
+          const badgeMatch = o.badgeNumber && o.badgeNumber.toLowerCase() === cleanId;
+          const nameMatch = o.name && o.name.toLowerCase() === cleanId;
+          return emailMatch || empIdMatch || badgeMatch || nameMatch;
+        });
+
+        if (!matched) {
+          setIsSubmitting(false);
+          setErrorMessage(parseAuthError(authErr));
+          return;
+        }
+      }
+    }
+
+    // Local roster fallback
     setTimeout(() => {
-      // Find matching officer by email, employeeId, or badgeNumber
       const matched = officers.find((o) => {
         const emailMatch = o.email && o.email.toLowerCase() === cleanId;
         const empIdMatch = o.employeeId && o.employeeId.toLowerCase() === cleanId;
@@ -84,7 +147,7 @@ export const OfficerLoginView: React.FC<OfficerLoginViewProps> = ({
 
       setIsSubmitting(false);
       onLoginSuccess(matched);
-    }, 350);
+    }, 200);
   };
 
   return (

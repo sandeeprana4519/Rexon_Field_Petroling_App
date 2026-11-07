@@ -49,7 +49,7 @@ import { ZaxonOwnerApp } from './components/zaxon/ZaxonOwnerApp';
 import { ShieldCheck, FileSpreadsheet, AlertTriangle, ArrowUpRight, Smartphone, LogOut, Compass, Download } from 'lucide-react';
 import { isFirebaseConfigured, auth } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { signOutUser, subscribeToAuth, AppUserProfile } from './services/authService';
+import { signOutUser, subscribeToAuth, AppUserProfile, createFirebaseUserAccount } from './services/authService';
 import { downloadPatrolReportsCSV } from './utils/csvExport';
 import { downloadOperationsAuditPDF } from './utils/pdfExport';
 import {
@@ -98,7 +98,17 @@ export default function App() {
     const unsubscribeAuth = subscribeToAuth((session) => {
       if (session.user || session.firebaseUser) {
         setAuthProfile(session.user);
-        setIsAdminAuthenticated(true);
+        if (session.user?.role === 'admin') {
+          setIsAdminAuthenticated(true);
+        } else if (session.user?.role === 'company') {
+          setAppMode('zaxon_owner_app');
+        } else if (session.user?.role === 'field_officer') {
+          if (session.user.officerId) {
+            setSelectedOfficerPersonaId(session.user.officerId);
+            saveToStorage(STORAGE_KEYS.OFFICER_AUTH, session.user.officerId);
+          }
+          setAppMode('field_officer');
+        }
       } else if (session.isFirebaseBacked) {
         // If real Firebase Auth is configured and user logged out, clear admin access
         setAuthProfile(null);
@@ -112,11 +122,35 @@ export default function App() {
   }, []);
 
   const handleAdminLoginSuccess = (profile?: AppUserProfile) => {
-    if (profile) setAuthProfile(profile);
-    setIsAdminAuthenticated(true);
-    saveToStorage(STORAGE_KEYS.ADMIN_AUTH, true);
-    setGlobalFeedback('एडमिन ऑपरेशन्स पोर्टल में आपका स्वागत है (Logged in to Admin Operations Console).');
-    setTimeout(() => setGlobalFeedback(null), 3000);
+    if (!profile) {
+      setIsAdminAuthenticated(true);
+      setAppMode('owner_dashboard');
+      saveToStorage(STORAGE_KEYS.ADMIN_AUTH, true);
+      return;
+    }
+    setAuthProfile(profile);
+
+    if (profile.role === 'admin') {
+      setIsAdminAuthenticated(true);
+      setAppMode('owner_dashboard');
+      saveToStorage(STORAGE_KEYS.ADMIN_AUTH, true);
+      setGlobalFeedback('एडमिन ऑपरेशन्स पोर्टल में आपका स्वागत है (Logged in to Admin Operations Console).');
+      setTimeout(() => setGlobalFeedback(null), 3000);
+    } else if (profile.role === 'company') {
+      setIsAdminAuthenticated(false);
+      setAppMode('zaxon_owner_app');
+      setGlobalFeedback(`कंपनी पोर्टल में आपका स्वागत है (Redirecting to Company Dashboard for ${profile.displayName}).`);
+      setTimeout(() => setGlobalFeedback(null), 3000);
+    } else if (profile.role === 'field_officer') {
+      setIsAdminAuthenticated(false);
+      if (profile.officerId) {
+        setSelectedOfficerPersonaId(profile.officerId);
+        saveToStorage(STORAGE_KEYS.OFFICER_AUTH, profile.officerId);
+      }
+      setAppMode('field_officer');
+      setGlobalFeedback(`फील्ड ऑफिसर पोर्टल में आपका स्वागत है (Redirecting to Field Officer Mode for ${profile.displayName}).`);
+      setTimeout(() => setGlobalFeedback(null), 3000);
+    }
   };
 
   const handleAdminLogout = async () => {
@@ -441,6 +475,15 @@ export default function App() {
     if (isFirebaseConfigured) {
       try {
         await saveSiteToFirestore(DEFAULT_COMPANY_ID, savedSite);
+        if (savedSite.contactEmail) {
+          await createFirebaseUserAccount({
+            email: savedSite.contactEmail,
+            password: savedSite.password || 'site123',
+            role: 'company',
+            companyId: savedSite.id,
+            displayName: savedSite.clientName || savedSite.name
+          }).catch((err) => console.warn('[App] Company Auth account creation notice:', err));
+        }
         setGlobalFeedback(`Site "${savedSite.name}" synced to Cloud Firestore.`);
         setTimeout(() => setGlobalFeedback(null), 3000);
       } catch (err: any) {
@@ -567,6 +610,16 @@ export default function App() {
     if (isFirebaseConfigured) {
       try {
         await saveOfficerToFirestore(DEFAULT_COMPANY_ID, savedOfficer);
+        if (savedOfficer.email) {
+          await createFirebaseUserAccount({
+            email: savedOfficer.email,
+            password: savedOfficer.password || 'rexon123',
+            role: 'field_officer',
+            companyId: DEFAULT_COMPANY_ID,
+            officerId: savedOfficer.id,
+            displayName: savedOfficer.name
+          }).catch((err) => console.warn('[App] Officer Auth account creation notice:', err));
+        }
         setGlobalFeedback(`Officer "${savedOfficer.name}" saved to Cloud Firestore.`);
         setTimeout(() => setGlobalFeedback(null), 3000);
       } catch (err: any) {
@@ -865,6 +918,15 @@ export default function App() {
     if (isFirebaseConfigured) {
       try {
         await saveClientAccountToFirestore(DEFAULT_COMPANY_ID, account);
+        if (account.email) {
+          await createFirebaseUserAccount({
+            email: account.email,
+            password: account.password || 'site123',
+            role: 'company',
+            companyId: account.companyId || account.id,
+            displayName: account.companyName || account.name
+          }).catch((err) => console.warn('[App] Client Account Auth creation notice:', err));
+        }
         setGlobalFeedback(`Account "${account.loginId}" saved to Cloud Firestore.`);
         setTimeout(() => setGlobalFeedback(null), 3000);
       } catch (err: any) {

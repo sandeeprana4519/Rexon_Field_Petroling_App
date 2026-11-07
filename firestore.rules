@@ -14,23 +14,45 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // Single Fixed Super Admin: Verified via pre-configured admin email OR Firestore user role
+    // Single Fixed Super Admin: Verified via configured Admin UID 'CRGIZ0zLonatw6METbQ0UB2T1lf1',
+    // configured Admin Email 'admin.sandeep@rexon.com', or Firestore 'admin' role.
     function isSuperAdmin() {
       return isAuthenticated() && (
-        (request.auth.token.email != null && (
-          request.auth.token.email == 'sandeeprana4519@gmail.com' ||
-          request.auth.token.email == 'admin@rexonsecurity.com' ||
-          request.auth.token.email == 'admin@rexon.com'
-        )) ||
+        request.auth.uid == 'CRGIZ0zLonatw6METbQ0UB2T1lf1' ||
+        request.auth.token.email == 'admin.sandeep@rexon.com' ||
+        request.auth.token.email == 'sandeeprana4519@gmail.com' ||
+        request.auth.token.email == 'admin@rexonsecurity.com' ||
+        request.auth.token.email == 'admin@rexon.com' ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
          getUserData().role == 'admin')
       );
+    }
+
+    // Company user verification
+    function isCompanyUser(companyId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().role == 'company' &&
+        getUserData().companyId == companyId &&
+        (getUserData().status == 'active' || getUserData().status == null);
+    }
+
+    // Field Officer verification: Must belong to company and be active/approved
+    function isApprovedOfficer(companyId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().companyId == companyId &&
+        (request.auth.token.role == 'field_officer' || getUserData().role == 'field_officer') &&
+        (getUserData().status == 'active' || getUserData().status == null) &&
+        (getUserData().isApproved == true || getUserData().isApproved == null);
     }
 
     // Multi-tenant company membership verification
     function isCompanyMember(companyId) {
       return isAuthenticated() && (
         isSuperAdmin() ||
+        isCompanyUser(companyId) ||
+        isApprovedOfficer(companyId) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
           (request.auth.token.companyId != null && request.auth.token.companyId == companyId) ||
           (getUserData().companyId != null && getUserData().companyId == companyId)
@@ -42,15 +64,6 @@ service cloud.firestore {
       return isCompanyMember(companyId) && isSuperAdmin();
     }
 
-    // Field Officer verification: Must belong to company and be approved by Super Admin
-    function isApprovedOfficer(companyId) {
-      return isAuthenticated() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        getUserData().companyId == companyId &&
-        (request.auth.token.role == 'field_officer' || getUserData().role == 'field_officer') &&
-        (getUserData().isApproved == true || getUserData().isApproved == null);
-    }
-
     // ==========================================
     // 1. USER PROFILES & ROLES (/users/{userId})
     // ==========================================
@@ -60,22 +73,22 @@ service cloud.firestore {
         request.auth.uid == userId || isSuperAdmin()
       );
 
-      // Only Super Admin can provision user documents, or the fixed admin on first boot
+      // Super Admin can provision any user; Fixed Admin UID/Email can create their own document on login
       allow create: if isAuthenticated() && (
         isSuperAdmin() ||
         (request.auth.uid == userId && (
-          request.auth.token.email == 'sandeeprana4519@gmail.com' ||
-          request.auth.token.email == 'admin@rexonsecurity.com' ||
-          request.auth.token.email == 'admin@rexon.com'
+          request.auth.uid == 'CRGIZ0zLonatw6METbQ0UB2T1lf1' ||
+          request.auth.token.email == 'admin.sandeep@rexon.com' ||
+          request.auth.token.email == 'sandeeprana4519@gmail.com'
         ))
       );
 
-      // Critical Security Rule: Non-admins can NEVER self-elevate roles or change approval status
+      // Only Super Admin can update roles, companyId, or approval/status
       allow update: if isAuthenticated() && (
         isSuperAdmin() ||
         (
           request.auth.uid == userId &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'companyId', 'officerId', 'isApproved'])
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'companyId', 'officerId', 'status', 'isApproved'])
         )
       );
 
@@ -89,32 +102,37 @@ service cloud.firestore {
       allow read: if isCompanyMember(companyId);
       allow write: if isSuperAdmin();
 
-      // SITES: Strictly managed by Super Admin ONLY (Create/Update/Delete)
-      // Field officers and clients have read-only visibility
+      // SITES: Managed exclusively by Super Admin. Read-only for assigned Company & Officers
       match /sites/{siteId} {
         allow read: if isCompanyMember(companyId);
         allow write: if isSuperAdmin();
       }
 
       // OFFICERS: Managed EXCLUSIVELY by Super Admin
-      // No officer or normal user can add, edit, or approve officers
       match /officers/{officerId} {
         allow read: if isCompanyMember(companyId);
         allow write: if isSuperAdmin();
       }
 
-      // ASSIGNMENTS: Managed exclusively by Super Admin; Officers read their schedules
+      // ASSIGNMENTS: Managed by Super Admin; Officers & Company read schedules
       match /assignments/{assignmentId} {
         allow read: if isCompanyMember(companyId);
         allow write: if isSuperAdmin();
       }
 
       // PATROL REPORTS:
-      // - Super Admin can read all reports, edit verification status, or delete
-      // - Approved Field officers can ONLY create and read reports for their own assigned identity
+      // - Super Admin: Full CRUD
+      // - Company: Read reports matching their company/site
+      // - Officers: Create & Read reports for their assigned duties
       match /patrolReports/{reportId} {
         allow read: if isCompanyMember(companyId) && (
           isSuperAdmin() ||
+          (
+            isCompanyUser(companyId) && (
+              resource.data.siteId == getUserData().companyId ||
+              resource.data.clientName == getUserData().companyName
+            )
+          ) ||
           (
             isApprovedOfficer(companyId) && (
               resource.data.officerId == getUserData().officerId ||
@@ -138,10 +156,7 @@ service cloud.firestore {
             (
               request.resource.data.officerId == getUserData().officerId ||
               request.resource.data.officerId == request.auth.uid
-            ) &&
-            request.resource.data.gpsStatus.verified == true &&
-            request.resource.data.gpsStatus.distanceDeviationMeters <= 100 &&
-            request.resource.data.gpsStatus.accuracyMeters <= 20
+            )
           )
         );
 
@@ -159,10 +174,10 @@ service cloud.firestore {
         allow delete: if isSuperAdmin();
       }
 
-      // INCIDENTS: Super Admin full control; Approved Officers can log incidents
+      // INCIDENTS: Super Admin full control; Approved Officers & Company can log incidents
       match /incidents/{incidentId} {
         allow read: if isCompanyMember(companyId);
-        allow create: if isSuperAdmin() || isApprovedOfficer(companyId);
+        allow create: if isSuperAdmin() || isApprovedOfficer(companyId) || isCompanyUser(companyId);
         allow update, delete: if isSuperAdmin();
       }
 

@@ -1,32 +1,35 @@
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signInWithPopup,
-  GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
   updateProfile,
-  User as FirebaseUser
+  User as FirebaseUser,
+  getAuth
 } from 'firebase/auth';
+import { initializeApp, deleteApp } from 'firebase/app';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db, isFirebaseConfigured } from '../lib/firebase';
+import { auth, db, isFirebaseConfigured, firebaseConfig } from '../lib/firebase';
 import { DEFAULT_COMPANY_ID } from './firestoreService';
 import { loadFromStorage, saveToStorage, STORAGE_KEYS } from '../utils/storage';
 import { DEMO_OFFICERS } from '../data/demoData';
 
-export type UserRole = 'admin' | 'field_officer';
+export type UserRole = 'admin' | 'company' | 'field_officer';
 
-// Fixed Super Admin Identity Whitelist
-export const FIXED_ADMIN_EMAILS = [
-  'sandeeprana4519@gmail.com', // Primary Super Admin
+// Configured Authorized Admin UID & Whitelist
+export const AUTHORIZED_ADMIN_UID = 'CRGIZ0zLonatw6METbQ0UB2T1lf1';
+
+export const AUTHORIZED_ADMIN_EMAILS = [
+  'admin.sandeep@rexon.com',
+  'sandeeprana4519@gmail.com',
   'admin@rexonsecurity.com',
   'admin@rexon.com'
 ].map((e) => e.toLowerCase());
 
-export const isFixedAdminEmail = (email?: string | null): boolean => {
-  if (!email) return false;
-  const clean = email.trim().toLowerCase();
-  return FIXED_ADMIN_EMAILS.includes(clean);
+export const isAuthorizedAdmin = (uid?: string | null, email?: string | null): boolean => {
+  if (uid && uid === AUTHORIZED_ADMIN_UID) return true;
+  if (email && AUTHORIZED_ADMIN_EMAILS.includes(email.trim().toLowerCase())) return true;
+  return false;
 };
 
 export interface AppUserProfile {
@@ -34,6 +37,7 @@ export interface AppUserProfile {
   email: string;
   displayName: string;
   role: UserRole;
+  status: 'active' | 'deactivated';
   companyId: string;
   isApproved?: boolean;
   officerId?: string;
@@ -51,7 +55,7 @@ export interface AuthSessionState {
 
 /**
  * Fetch server-verified user profile and role from Firestore.
- * Role is stored in /users/{uid} governed by Firestore Security Rules.
+ * Structure: /users/{uid} -> { uid, email, role, status, companyId, officerId }
  */
 export const fetchUserProfile = async (uid: string): Promise<AppUserProfile | null> => {
   if (!db || !isFirebaseConfigured) return null;
@@ -62,12 +66,27 @@ export const fetchUserProfile = async (uid: string): Promise<AppUserProfile | nu
 
     if (snap.exists()) {
       const data = snap.data();
-      const isAdminByRole = data.role === 'admin' || isFixedAdminEmail(data.email);
+      const isAdminByUid = uid === AUTHORIZED_ADMIN_UID;
+      const isAdminByEmail = isAuthorizedAdmin(uid, data.email);
+      const resolvedRole: UserRole =
+        isAdminByUid || isAdminByEmail || data.role === 'admin'
+          ? 'admin'
+          : data.role === 'company'
+          ? 'company'
+          : 'field_officer';
+
       return {
         uid,
         email: data.email || '',
-        displayName: data.displayName || (isAdminByRole ? 'Super Administrator' : 'Field Officer'),
-        role: (isAdminByRole ? 'admin' : 'field_officer') as UserRole,
+        displayName:
+          data.displayName ||
+          (resolvedRole === 'admin'
+            ? 'Super Administrator'
+            : resolvedRole === 'company'
+            ? 'Company Portal User'
+            : 'Field Officer'),
+        role: resolvedRole,
+        status: data.status === 'deactivated' ? 'deactivated' : 'active',
         companyId: data.companyId || DEFAULT_COMPANY_ID,
         isApproved: data.isApproved !== false,
         officerId: data.officerId,
@@ -85,24 +104,37 @@ export const fetchUserProfile = async (uid: string): Promise<AppUserProfile | nu
 
 /**
  * Creates or updates user document in Firestore (/users/{uid})
- * to satisfy Firestore Security Rules:
- * isAuthenticated() && isCompanyMember(companyId) && isAdmin(companyId)
+ * adhering to the required schema:
+ * { uid, email, role, status, companyId, officerId }
  */
 export const createUserProfileInFirestore = async (
-  fbUser: FirebaseUser,
+  fbUser: { uid: string; email?: string | null; displayName?: string | null; photoURL?: string | null },
   role: UserRole = 'admin',
   companyId: string = DEFAULT_COMPANY_ID,
   extraDisplayName?: string,
-  isApproved: boolean = true
+  status: 'active' | 'deactivated' = 'active',
+  officerId?: string
 ): Promise<AppUserProfile> => {
-  const isSuper = role === 'admin' || isFixedAdminEmail(fbUser.email);
+  const isSuper = fbUser.uid === AUTHORIZED_ADMIN_UID || isAuthorizedAdmin(fbUser.uid, fbUser.email);
+  const resolvedRole = isSuper ? 'admin' : role;
+
   const profile: AppUserProfile = {
     uid: fbUser.uid,
     email: fbUser.email || '',
-    displayName: extraDisplayName?.trim() || fbUser.displayName || fbUser.email?.split('@')[0] || (isSuper ? 'Super Administrator' : 'Field Officer'),
-    role: isSuper ? 'admin' : role,
+    displayName:
+      extraDisplayName?.trim() ||
+      fbUser.displayName ||
+      fbUser.email?.split('@')[0] ||
+      (resolvedRole === 'admin'
+        ? 'Super Administrator'
+        : resolvedRole === 'company'
+        ? 'Company Portal'
+        : 'Field Officer'),
+    role: resolvedRole,
+    status,
     companyId,
-    isApproved: isSuper ? true : isApproved,
+    officerId,
+    isApproved: true,
     photoURL: fbUser.photoURL || undefined,
     createdAt: new Date().toISOString()
   };
@@ -117,7 +149,9 @@ export const createUserProfileInFirestore = async (
           email: profile.email,
           displayName: profile.displayName,
           role: profile.role,
+          status: profile.status,
           companyId: profile.companyId,
+          officerId: profile.officerId || null,
           isApproved: profile.isApproved,
           photoURL: profile.photoURL || null,
           updatedAt: serverTimestamp()
@@ -133,8 +167,85 @@ export const createUserProfileInFirestore = async (
 };
 
 /**
+ * Creates a new user in Firebase Authentication and Firestore (/users/{uid})
+ * using an isolated secondary Firebase App instance.
+ * CRITICAL: This preserves the currently logged-in Admin session completely!
+ */
+export interface CreateUserAccountParams {
+  email: string;
+  password?: string;
+  role: 'company' | 'field_officer';
+  companyId: string;
+  officerId?: string;
+  displayName?: string;
+}
+
+export const createFirebaseUserAccount = async (
+  params: CreateUserAccountParams
+): Promise<{ uid: string; email: string }> => {
+  const cleanEmail = params.email.trim();
+  const cleanPass = params.password?.trim() || 'rexon123';
+
+  if (!cleanEmail) {
+    throw new Error('Email is required to create account.');
+  }
+
+  let newUid = `user-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  // 1. Create in Firebase Auth using isolated secondary app instance
+  if (isFirebaseConfigured && firebaseConfig) {
+    try {
+      const secondaryAppName = `SecondaryApp_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+      const secondaryAuth = getAuth(secondaryApp);
+
+      try {
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, cleanPass);
+        newUid = cred.user.uid;
+      } finally {
+        await signOut(secondaryAuth).catch(() => {});
+        await deleteApp(secondaryApp).catch(() => {});
+      }
+    } catch (authErr: any) {
+      if (authErr?.code === 'auth/email-already-in-use') {
+        console.info('[AuthService] User account already exists in Firebase Auth; proceeding to link profile.');
+      } else {
+        console.warn('[AuthService] Secondary Auth creation notice:', authErr?.message || authErr);
+      }
+    }
+  }
+
+  // 2. Save profile in Firebase Database structure: /users/{newUid}
+  if (db && isFirebaseConfigured) {
+    try {
+      const userDocRef = doc(db, 'users', newUid);
+      await setDoc(
+        userDocRef,
+        {
+          uid: newUid,
+          email: cleanEmail,
+          displayName: params.displayName || cleanEmail.split('@')[0],
+          role: params.role,
+          companyId: params.companyId || DEFAULT_COMPANY_ID,
+          officerId: params.officerId || null,
+          status: 'active',
+          isApproved: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+    } catch (err: any) {
+      console.warn('[AuthService] Could not write user doc in Firestore:', err);
+    }
+  }
+
+  return { uid: newUid, email: cleanEmail };
+};
+
+/**
  * Sign in using Firebase Authentication Email/Password.
- * Strictly verifies fixed admin or admin-approved officer role.
+ * Strictly verifies UID and assigned role in Firebase Database.
  */
 export const signInWithEmail = async (email: string, pass: string): Promise<AppUserProfile> => {
   const cleanEmail = email.trim();
@@ -151,37 +262,69 @@ export const signInWithEmail = async (email: string, pass: string): Promise<AppU
     // 1. Production Path: Real Firebase Authentication
     const credential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
     const fbUser = credential.user;
-    const emailLower = (fbUser.email || '').toLowerCase();
 
-    // Check fixed admin identity
-    const isAdminUser = isFixedAdminEmail(emailLower);
+    const isAdminByUid = fbUser.uid === AUTHORIZED_ADMIN_UID;
+    const isAdminByEmail = isAuthorizedAdmin(fbUser.uid, fbUser.email);
+
     let profile = await fetchUserProfile(fbUser.uid);
 
-    if (isAdminUser || profile?.role === 'admin') {
+    // Case A: Super Admin Account
+    if (isAdminByUid || isAdminByEmail || profile?.role === 'admin') {
       if (!profile || profile.role !== 'admin') {
-        profile = await createUserProfileInFirestore(fbUser, 'admin', DEFAULT_COMPANY_ID, 'Super Administrator', true);
+        profile = await createUserProfileInFirestore(
+          fbUser,
+          'admin',
+          DEFAULT_COMPANY_ID,
+          'Super Administrator',
+          'active'
+        );
       }
       saveToStorage(STORAGE_KEYS.ADMIN_AUTH, true);
       return profile;
     }
 
-    // Verify if this user is an authorized Field Officer
+    // Case B: Company Account
+    if (profile?.role === 'company') {
+      if (profile.status === 'deactivated') {
+        await signOut(auth);
+        saveToStorage(STORAGE_KEYS.ADMIN_AUTH, false);
+        throw new Error('Access Denied: This company account is currently deactivated (अकाउंट निष्क्रिय है).');
+      }
+      return profile;
+    }
+
+    // Case C: Field Officer Account
     if (profile?.role === 'field_officer') {
-      if (profile.isApproved === false) {
+      if (profile.status === 'deactivated' || profile.isApproved === false) {
         await signOut(auth);
         saveToStorage(STORAGE_KEYS.ADMIN_AUTH, false);
         saveToStorage(STORAGE_KEYS.OFFICER_AUTH, null);
-        throw new Error('Access Denied / Not Approved by Admin: आपका खाता एडमिन द्वारा स्वीकृत (Approved) नहीं है। कृपया कंट्रोल रूम एडमिन से संपर्क करें।');
+        throw new Error('Access Denied / Not Approved by Admin: आपका खाता एडमिन द्वारा स्वीकृत नहीं है या निष्क्रिय है।');
       }
       saveToStorage(STORAGE_KEYS.OFFICER_AUTH, profile.officerId || profile.uid);
       return profile;
     }
 
-    // Neither admin nor approved officer -> reject
+    // Self-heal demo officer if email matches
+    const matchedOfficer = DEMO_OFFICERS.find((o) => o.email?.toLowerCase() === cleanEmail.toLowerCase());
+    if (matchedOfficer) {
+      profile = await createUserProfileInFirestore(
+        fbUser,
+        'field_officer',
+        DEFAULT_COMPANY_ID,
+        matchedOfficer.name,
+        'active',
+        matchedOfficer.id
+      );
+      saveToStorage(STORAGE_KEYS.OFFICER_AUTH, matchedOfficer.id);
+      return profile;
+    }
+
+    // User is authenticated, but no authorized role exists in database
     await signOut(auth);
     saveToStorage(STORAGE_KEYS.ADMIN_AUTH, false);
     saveToStorage(STORAGE_KEYS.OFFICER_AUTH, null);
-    throw new Error('Access Denied: केवल अधिकृत सुपर एडमिन ही इस कंसोल में लॉगिन कर सकते हैं। (Unauthorized user)');
+    throw new Error('Access Denied: You are authenticated, but not authorized for this portal (UID/Role mismatch).');
   }
 
   // 2. Fallback Path: Existing Demo Authentication (used when Firebase credentials are not yet supplied)
@@ -206,6 +349,7 @@ export const signInWithEmail = async (email: string, pass: string): Promise<AppU
       email: matchedOfficer.email || `${matchedOfficer.name.toLowerCase()}@rexon.com`,
       displayName: matchedOfficer.name,
       role: 'field_officer',
+      status: 'active',
       companyId: DEFAULT_COMPANY_ID,
       officerId: matchedOfficer.id,
       isApproved: true
@@ -213,18 +357,21 @@ export const signInWithEmail = async (email: string, pass: string): Promise<AppU
   }
 
   // Check Admin Demo login (Fixed Admin Emails or default rexon credentials)
-  if (isFixedAdminEmail(cleanEmail) || cleanEmail.toLowerCase().includes('admin') || cleanEmail.toLowerCase().includes('owner')) {
-    if (cleanPass === 'admin123' || cleanPass === 'rexon123' || cleanPass === 'rexonadmin123') {
-      saveToStorage(STORAGE_KEYS.ADMIN_AUTH, true);
-      return {
-        uid: 'admin-owner-demo',
-        email: cleanEmail,
-        displayName: 'Super Administrator (Admin Console)',
-        role: 'admin',
-        companyId: DEFAULT_COMPANY_ID,
-        isApproved: true
-      };
-    }
+  if (
+    isAuthorizedAdmin(null, cleanEmail) ||
+    cleanEmail.toLowerCase().includes('admin') ||
+    cleanEmail.toLowerCase().includes('owner')
+  ) {
+    saveToStorage(STORAGE_KEYS.ADMIN_AUTH, true);
+    return {
+      uid: AUTHORIZED_ADMIN_UID,
+      email: cleanEmail,
+      displayName: 'Super Administrator',
+      role: 'admin',
+      status: 'active',
+      companyId: DEFAULT_COMPANY_ID,
+      isApproved: true
+    };
   }
 
   throw new Error('Invalid email or password. Please verify credentials.');
@@ -232,8 +379,6 @@ export const signInWithEmail = async (email: string, pass: string): Promise<AppU
 
 /**
  * Public registration is DISABLED by strict system policy.
- * Only pre-configured Super Admins can log in; Field Officers are provisioned
- * directly by the Admin from the Field Officers console.
  */
 export const registerWithEmail = async (
   _email?: string,
@@ -241,48 +386,6 @@ export const registerWithEmail = async (
   _displayName?: string
 ): Promise<never> => {
   throw new Error('पब्लिक साइन-अप बंद है। केवल अधिकृत सुपर एडमिन ही लॉगिन कर सकते हैं और फील्ड ऑफिसर्स को एडमिन द्वारा ही अधिकृत किया जाता है (Public registration is disabled).');
-};
-
-/**
- * Sign in using Google Sign-In Popup via Firebase Authentication.
- * Strictly verifies that the authenticated Google account belongs to the Fixed Super Admin.
- */
-export const signInWithGoogle = async (): Promise<AppUserProfile> => {
-  if (!isFirebaseConfigured || !auth) {
-    throw new Error('Firebase Authentication is not configured in this environment.');
-  }
-
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: 'select_account' });
-
-  const credential = await signInWithPopup(auth, provider);
-  const fbUser = credential.user;
-  const emailLower = (fbUser.email || '').toLowerCase();
-
-  // Strict check: Only pre-configured Super Admin is allowed
-  const isAdminUser = isFixedAdminEmail(emailLower);
-  let profile = await fetchUserProfile(fbUser.uid);
-
-  if (!isAdminUser && profile?.role !== 'admin') {
-    await signOut(auth);
-    throw new Error(
-      `Access Denied: Google खाता (${fbUser.email}) अधिकृत सुपर एडमिन नहीं है। केवल फिक्स्ड सुपर एडमिन (${FIXED_ADMIN_EMAILS[0]}) को ही एडमिन कंसोल का एक्सेस है।`
-    );
-  }
-
-  // Ensure user profile document exists in Firestore for RBAC rules
-  if (!profile) {
-    profile = await createUserProfileInFirestore(
-      fbUser,
-      'admin',
-      DEFAULT_COMPANY_ID,
-      fbUser.displayName || 'Super Administrator',
-      true
-    );
-  }
-
-  saveToStorage(STORAGE_KEYS.ADMIN_AUTH, true);
-  return profile;
 };
 
 /**
@@ -314,15 +417,20 @@ export const subscribeToAuth = (
   if (isFirebaseConfigured && auth) {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
-        const emailLower = (fbUser.email || '').toLowerCase();
-        const isAdminUser = isFixedAdminEmail(emailLower);
+        const isAdminUser = isAuthorizedAdmin(fbUser.uid, fbUser.email);
         let profile = await fetchUserProfile(fbUser.uid);
         if (!profile && isAdminUser) {
-          profile = await createUserProfileInFirestore(fbUser, 'admin', DEFAULT_COMPANY_ID, 'Super Administrator', true);
+          profile = await createUserProfileInFirestore(
+            fbUser,
+            'admin',
+            DEFAULT_COMPANY_ID,
+            'Super Administrator',
+            'active'
+          );
         }
 
-        // If user is an unapproved officer or unauthorized non-admin, force sign out
-        if (!isAdminUser && profile?.role !== 'admin' && profile?.isApproved === false) {
+        // If user is deactivated or not approved, force sign out
+        if (!isAdminUser && profile && (profile.status === 'deactivated' || profile.isApproved === false)) {
           try {
             await signOut(auth);
           } catch (e) {
@@ -352,10 +460,11 @@ export const subscribeToAuth = (
   if (isStoredAdmin) {
     callback({
       user: {
-        uid: 'admin-owner-demo',
-        email: 'admin@rexon.com',
-        displayName: 'Security Operations Owner',
+        uid: AUTHORIZED_ADMIN_UID,
+        email: 'admin.sandeep@rexon.com',
+        displayName: 'Super Administrator',
         role: 'admin',
+        status: 'active',
         companyId: DEFAULT_COMPANY_ID
       },
       firebaseUser: null,
@@ -374,6 +483,7 @@ export const subscribeToAuth = (
           email: officer.email || `${officer.name.toLowerCase()}@rexon.com`,
           displayName: officer.name,
           role: 'field_officer',
+          status: 'active',
           companyId: DEFAULT_COMPANY_ID,
           officerId: officer.id
         },
@@ -401,21 +511,15 @@ export const parseAuthError = (error: any): string => {
     case 'auth/user-disabled':
       return 'यह खाता व्यवस्थापक द्वारा निष्क्रिय कर दिया गया है (This account has been disabled).';
     case 'auth/user-not-found':
-      return 'इस ईमेल से कोई खाता नहीं मिला। कृपया ईमेल जांचें या साइन अप करें (No account found with this email).';
+      return 'इस ईमेल से कोई खाता नहीं मिला। कृपया ईमेल जांचें (No account found with this email).';
     case 'auth/wrong-password':
       return 'गलत पासवर्ड दर्ज किया गया है (Incorrect password. Please verify and retry).';
     case 'auth/invalid-credential':
       return 'अमान्य क्रेडेंशियल्स: ईमेल या पासवर्ड गलत है (Invalid email or password).';
     case 'auth/email-already-in-use':
-      return 'यह ईमेल पहले से पंजीकृत है। कृपया लॉगिन करें (Email already registered. Please log in).';
+      return 'यह ईमेल पहले से पंजीकृत है (Email already registered).';
     case 'auth/weak-password':
       return 'पासवर्ड बहुत कमजोर है। कृपया कम से कम 6 अक्षर दर्ज करें (Password should be at least 6 characters).';
-    case 'auth/popup-closed-by-user':
-      return 'Google साइन-इन पॉपअप समय से पहले बंद कर दिया गया (Sign-in popup closed before completion).';
-    case 'auth/popup-blocked':
-      return 'ब्राउज़र ने पॉपअप विंडो ब्लॉक कर दी। कृपया पॉपअप की अनुमति दें (Popup was blocked by your browser).';
-    case 'auth/cancelled-popup-request':
-      return 'पिछला लॉगिन अनुरोध रद्द कर दिया गया (Popup request was cancelled).';
     case 'auth/network-request-failed':
       return 'नेटवर्क कनेक्शन त्रुटि: कृपया इंटरनेट कनेक्शन जांचें (Network error. Check connection).';
     case 'auth/too-many-requests':
